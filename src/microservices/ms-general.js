@@ -18,7 +18,7 @@ app.use(express.json());
 app.use('/equipo', require('../routes/equipo.route.js'));
 app.use('/cliente', require('../routes/cliente.route.js'));
 app.use('/presupuesto', require('../routes/presupuesto.route.js'));
-
+app.use('/ingreso', require('../routes/ingreso.route.js'));
 
 
 // coma antes del req --> '_req', buena practica para evitar errores de linting si no se usa el parámetro 

@@ -1,0 +1,22 @@
+# Node modules
+node_modules/
+
+# Archivos temporales del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de logs
+logs/
+*.log
+
+# Variables de entorno
+.env
+
+# Cachés
+.cache/
+dist/
+
+# Archivos temporales de compilación
+*.tmp
+*.temp
+*.cache

@@ -69,6 +69,9 @@ const { pool } = require ('../config/db.js');
   }
 };
 
+
+
+
 // Exportar las funciones
 module.exports = {
     getClientes,
