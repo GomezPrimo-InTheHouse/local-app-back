@@ -1,14 +1,8 @@
-const express = require('express');
-const router = express.Router();
-const validatePresupuesto = require('../middlewares/validatePresupuesto.js');
-const {
-  getPresupuestos,
-  createPresupuesto,
-  updatePresupuesto,
-  deletePresupuesto,
-  getPresupuestosByIngreso,
-  getPresupuestosByEquipo
-} = require('../controllers/presupuesto.controller');
+import { Router } from 'express';
+const router = Router();
+// import validatePresupuesto from '../middlewares/validatePresupuesto.js';
+import { getPresupuestos, createPresupuesto, updatePresupuesto, 
+  deletePresupuesto, getPresupuestosByIngreso, getPresupuestosByEquipo } from '../controllers/presupuesto.controller.js';
 
 // Rutas 
 router.get('/', getPresupuestos); // Obtener todos los presupuestos
@@ -18,4 +12,4 @@ router.put('/:id', updatePresupuesto); // Actualizar un presupuesto
 router.delete('/:id', deletePresupuesto); // Eliminar un presupuesto
 router.get('/ingreso/:ingresoId', getPresupuestosByIngreso); // Obtener presupuestos por ingreso
 
-module.exports = router;
+export default router;

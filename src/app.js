@@ -1,14 +1,17 @@
-const { spawn } = require('child_process');
-const path = require('path');
+import { spawn } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-//aca voy agregando los microservicios que quiero iniciar
-// cada uno con su nombre y puerto correspondiente
-// el nombre debe ser el mismo que el archivo del microservicio
+
+// Reemplazo de __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+
+// Microservicios
 const services = [
   { name: 'ms-general.js', port: 7001 },
- 
 ];
-
 
 services.forEach(service => {
   const servicePath = path.join(__dirname, 'microservices', service.name);
@@ -16,7 +19,7 @@ services.forEach(service => {
   const child = spawn('node', [servicePath], {
     env: { ...process.env, PORT: service.port },
     stdio: 'inherit',
-   
+    shell: true // recomendable para Windows/macOS
   });
 
   child.on('close', code => {

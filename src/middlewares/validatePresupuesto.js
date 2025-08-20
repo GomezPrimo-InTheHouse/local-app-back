@@ -1,5 +1,5 @@
 // src/middlewares/validatePresupuesto.js
-const { pool } = require ('../config/db.js');
+import pool from '../config/db';
 
 const validatePresupuesto = async (req, res, next) => {
   const { cliente_id, equipo_id } = req.body;
@@ -25,4 +25,4 @@ const validatePresupuesto = async (req, res, next) => {
   }
 };
 
-module.exports = validatePresupuesto;
+export default validatePresupuesto;

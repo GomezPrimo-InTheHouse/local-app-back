@@ -1,7 +1,7 @@
-const { pool } = require ('../config/db.js');
+import  { pool }  from '../config/db.js';
 
 // Obtener todos los clientes
- const getClientes = async (req, res) => {
+export const getClientes = async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM cliente ORDER BY id ASC');
     res.json(rows);
@@ -11,7 +11,7 @@ const { pool } = require ('../config/db.js');
 };
 
 // Obtener cliente por ID
- const getClienteById = async (req, res) => {
+export const getClienteById = async (req, res) => {
   try {
     const { id } = req.params;
     const { rows } = await pool.query('SELECT * FROM cliente WHERE id = $1', [id]);
@@ -23,7 +23,7 @@ const { pool } = require ('../config/db.js');
 };
 
 // Crear nuevo cliente
- const createCliente = async (req, res) => {
+export const createCliente = async (req, res) => {
   try {
     const { nombre, apellido, direccion, celular, celular_contacto } = req.body;
     const query = `
@@ -39,7 +39,7 @@ const { pool } = require ('../config/db.js');
 };
 
 // Actualizar cliente
- const updateCliente = async (req, res) => {
+export const updateCliente = async (req, res) => {
   try {
     const { id } = req.params;
     const { nombre, apellido, direccion, celular, celular_contacto } = req.body;
@@ -58,7 +58,7 @@ const { pool } = require ('../config/db.js');
 };
 
 // Eliminar cliente
- const deleteCliente = async (req, res) => {
+export const deleteCliente = async (req, res) => {
   try {
     const { id } = req.params;
     const { rowCount } = await pool.query('DELETE FROM cliente WHERE id = $1', [id]);
@@ -73,7 +73,7 @@ const { pool } = require ('../config/db.js');
 
 
 // Exportar las funciones
-module.exports = {
+export default {
     getClientes,
     getClienteById,
     createCliente,

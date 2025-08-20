@@ -1,24 +1,42 @@
 // src/controllers/ingreso.controller.js
-const { pool } = require ('../config/db.js');
+import  {pool}  from '../config/db.js';
 // Crear ingreso
-const createIngreso = async (req, res) => {
+// const createIngreso = async (req, res) => {
+//   try {
+//     const { equipo_id, fecha_ingreso, fecha_egreso, estado } = req.body;
+
+//     const query = `
+//       INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado)
+//       VALUES ($1, $2, $3, $4)
+//       RETURNING *;
+//     `;
+
+//     const values = [
+//       equipo_id,
+//       fecha_ingreso || new Date(),
+//       fecha_egreso || null,
+//       estado || 'En reparación'
+//     ];
+
+//     const { rows } = await pool.query(query, values);
+//     res.status(201).json(rows[0]);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// };
+
+// CREATE INGRESO
+export const createIngreso = async (req, res) => {
   try {
-    const { equipo_id, fecha_ingreso, fecha_egreso, estado } = req.body;
+    const { equipo_id, fecha_ingreso, fecha_egreso, estado_id } = req.body;
 
     const query = `
-      INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado)
+      INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado_id)
       VALUES ($1, $2, $3, $4)
       RETURNING *;
     `;
 
-    const values = [
-      equipo_id,
-      fecha_ingreso || new Date(),
-      fecha_egreso || null,
-      estado || 'En reparación'
-    ];
-
-    const { rows } = await pool.query(query, values);
+    const { rows } = await pool.query(query, [equipo_id, fecha_ingreso, fecha_egreso, estado_id]);
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -26,7 +44,7 @@ const createIngreso = async (req, res) => {
 };
 
 // Obtener todos los ingresos
-const getIngresos = async (_req, res) => {
+export const getIngresos = async (_req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM ingreso ORDER BY fecha_ingreso DESC');
     res.json(rows);
@@ -36,7 +54,7 @@ const getIngresos = async (_req, res) => {
 };
 
 // Obtener ingresos por equipo, más recientes primero
-const getIngresosByEquipo = async (req, res) => {
+export const getIngresosByEquipo = async (req, res) => {
   try {
     const { equipoId } = req.params;
     const query = `
@@ -53,22 +71,46 @@ const getIngresosByEquipo = async (req, res) => {
 };
 
 // Actualizar ingreso
-const updateIngreso = async (req, res) => {
+// const updateIngreso = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { fecha_ingreso, fecha_egreso, estado } = req.body;
+
+//     const query = `
+//       UPDATE ingreso
+//       SET fecha_ingreso = COALESCE($1, fecha_ingreso),
+//           fecha_egreso = COALESCE($2, fecha_egreso),
+//           estado = COALESCE($3, estado)
+//       WHERE id = $4
+//       RETURNING *;
+//     `;
+//     const { rows } = await pool.query(query, [fecha_ingreso, fecha_egreso, estado, id]);
+
+//     if (rows.length === 0) return res.status(404).json({ error: 'Ingreso no encontrado' });
+
+//     res.json(rows[0]);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// };
+export const updateIngreso = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fecha_ingreso, fecha_egreso, estado } = req.body;
+    const { fecha, descripcion, estado_id } = req.body;
 
-    const query = `
-      UPDATE ingreso
-      SET fecha_ingreso = COALESCE($1, fecha_ingreso),
-          fecha_egreso = COALESCE($2, fecha_egreso),
-          estado = COALESCE($3, estado)
-      WHERE id = $4
-      RETURNING *;
-    `;
-    const { rows } = await pool.query(query, [fecha_ingreso, fecha_egreso, estado, id]);
+    const { rows } = await pool.query(
+      `UPDATE ingreso
+       SET fecha = COALESCE($1, fecha),
+           descripcion = COALESCE($2, descripcion),
+           estado_id = COALESCE($3, estado_id)
+       WHERE id = $4
+       RETURNING *`,
+      [fecha, descripcion, estado_id, id]
+    );
 
-    if (rows.length === 0) return res.status(404).json({ error: 'Ingreso no encontrado' });
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Ingreso no encontrado' });
+    }
 
     res.json(rows[0]);
   } catch (err) {
@@ -76,8 +118,9 @@ const updateIngreso = async (req, res) => {
   }
 };
 
+
 // Eliminar ingreso
-const deleteIngreso = async (req, res) => {
+export const deleteIngreso = async (req, res) => {
   try {
     const { id } = req.params;
     const { rowCount } = await pool.query('DELETE FROM ingreso WHERE id = $1', [id]);
@@ -90,7 +133,7 @@ const deleteIngreso = async (req, res) => {
   }
 };
 
-module.exports = {
+export default {
   createIngreso,
   getIngresos,
   getIngresosByEquipo,

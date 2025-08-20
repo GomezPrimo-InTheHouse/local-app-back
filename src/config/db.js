@@ -1,11 +1,11 @@
-const pg  = require('pg');
-const dotenv = require('dotenv');
+import pg from 'pg';
+import { config } from 'dotenv';
 
-dotenv.config();
+config();
 const { Pool } = pg;
 
 // Pool de conexiones
-const pool = new Pool({
+export const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT || 5433,
   user: process.env.DB_USER || 'postgres',
@@ -22,4 +22,4 @@ pool.connect()
   .catch(err => console.error('❌ Error de conexión:', err));
 
 
-  module.exports = { pool };
+export default { pool };

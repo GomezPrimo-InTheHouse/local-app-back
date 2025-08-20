@@ -1,17 +1,7 @@
-express = require('express');
-const router = express.Router();
+import { Router } from 'express';
+const router = Router();
 
-const {
-  getEquipos,
-  getEquipoById,
-  createEquipo,
-  updateEquipo,
-  deleteEquipo,
-  getEquiposByTipo,
-  getEquiposFiltrados,
-  getEquiposByCliente,
-  getEquiposConDetalle
-} = require( '../controllers/equipo.controller.js');
+import { getEquipos, getEquipoById, createEquipo, updateEquipo, deleteEquipo, getEquiposByTipo, getEquiposFiltrados, getEquiposByCliente, getEquiposConDetalle } from '../controllers/equipo.controller.js';
 
 
 router.get('/', getEquipos);
@@ -29,4 +19,4 @@ router.get('/filtrar', getEquiposFiltrados);
 router.get('/cliente/:cliente_id', getEquiposByCliente);
 
 
-module.exports = router;
+export default router;

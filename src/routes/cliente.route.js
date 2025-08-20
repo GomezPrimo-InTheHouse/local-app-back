@@ -1,13 +1,7 @@
-const express = require('express');
-const router = express.Router();
+import { Router } from 'express';
+const router = Router();
 
-const {
-  getClientes,
-  getClienteById,
-  createCliente,
-  updateCliente,
-  deleteCliente
-} = require ('../controllers/cliente.controller.js');
+import { getClientes, getClienteById, createCliente, updateCliente, deleteCliente } from '../controllers/cliente.controller.js';
 
 
 
@@ -18,4 +12,4 @@ router.post('/', createCliente);       // Crear
 router.put('/:id', updateCliente);     // Actualizar
 router.delete('/:id', deleteCliente);  // Eliminar
 
-module.exports = router;
+export default router;

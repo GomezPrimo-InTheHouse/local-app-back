@@ -1,7 +1,7 @@
 // src/middlewares/validateIngreso.js
-const pool = require('../config/db');
+import pool from '../config/db';
 
-const validateIngreso = async (req, res, next) => {
+export const validateIngreso = async (req, res, next) => {
   const { equipo_id } = req.body;
 
   try {
@@ -25,4 +25,4 @@ const validateIngreso = async (req, res, next) => {
   }
 };
 
-module.exports = validateIngreso;
+export default {validateIngreso};

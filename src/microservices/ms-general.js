@@ -1,25 +1,38 @@
-const express = require('express');
-const cors = require('cors');
+import express, { json } from 'express';
+import cors from 'cors';
+//import dotenv
+import dotenv from 'dotenv';
+dotenv.config();
 
-require('dotenv').config();
+import morgan from 'morgan';
+//importar rutas de cliente
+import ClienteRoute  from '../routes/cliente.route.js';
+import EquipoRoute from '../routes/equipo.route.js';
+import PresupuestoRoute from '../routes/presupuesto.route.js';
+import IngresoRoute from '../routes/ingreso.route.js';
+import AuthRoute from '../routes/auth/auth.routes.js';
+import EstadoRoute from '../routes/estado.route.js';
+
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 7000
 
+app.use(morgan('dev'));
 
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - Microservicio gral`);
   next();
 });
 
-app.use(express.json());
+app.use(json());
 
 
-app.use('/equipo', require('../routes/equipo.route.js'));
-app.use('/cliente', require('../routes/cliente.route.js'));
-app.use('/presupuesto', require('../routes/presupuesto.route.js'));
-app.use('/ingreso', require('../routes/ingreso.route.js'));
-
+app.use('/equipo', EquipoRoute);
+app.use('/cliente', ClienteRoute);
+app.use('/presupuesto', PresupuestoRoute);
+app.use('/ingreso', IngresoRoute);
+app.use('/auth', AuthRoute);
+app.use('/estado', EstadoRoute);
 
 // coma antes del req --> '_req', buena practica para evitar errores de linting si no se usa el parámetro 
 app.get('/health', (_req, res) => {
