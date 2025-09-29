@@ -12,10 +12,13 @@ import PresupuestoRoute from '../routes/presupuesto.route.js';
 import IngresoRoute from '../routes/ingreso.route.js';
 import AuthRoute from '../routes/auth/auth.routes.js';
 import EstadoRoute from '../routes/estado.route.js';
-
+import HistorialRoute from '../routes/historial.route.js';
+import EstadisticasRoute from '../routes/estadisticas.routes.js';
+import ProductoRoute from '../routes/producto.route.js';
+import VentaRoute from '../routes/venta.route.js';
 const app = express();
 app.use(cors());
-const PORT = process.env.PORT || 7000
+const PORT = process.env.PORT || 7001
 
 app.use(morgan('dev'));
 
@@ -33,6 +36,10 @@ app.use('/presupuesto', PresupuestoRoute);
 app.use('/ingreso', IngresoRoute);
 app.use('/auth', AuthRoute);
 app.use('/estado', EstadoRoute);
+app.use('/historial', HistorialRoute);  // /historial/equipo/:equipoId
+app.use('/estadisticas', EstadisticasRoute); // /estadisticas/...
+app.use('/producto', ProductoRoute); // /producto/...
+app.use('/venta', VentaRoute); // /venta/...
 
 // coma antes del req --> '_req', buena practica para evitar errores de linting si no se usa el parámetro 
 app.get('/health', (_req, res) => {

@@ -11,6 +11,7 @@ const __dirname = path.dirname(__filename);
 // Microservicios
 const services = [
   { name: 'ms-general.js', port: 7001 },
+  {name: 'ms-twilio.js', port: 7002 }
 ];
 
 services.forEach(service => {

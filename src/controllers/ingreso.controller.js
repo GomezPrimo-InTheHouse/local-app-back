@@ -96,16 +96,16 @@ export const getIngresosByEquipo = async (req, res) => {
 export const updateIngreso = async (req, res) => {
   try {
     const { id } = req.params;
-    const { fecha, descripcion, estado_id } = req.body;
+    const { fecha_ingreso, fecha_egreso, estado_id } = req.body;
 
     const { rows } = await pool.query(
       `UPDATE ingreso
-       SET fecha = COALESCE($1, fecha),
-           descripcion = COALESCE($2, descripcion),
+       SET fecha_ingreso = COALESCE($1, fecha_ingreso),
+           fecha_egreso = COALESCE($2, fecha_egreso),
            estado_id = COALESCE($3, estado_id)
        WHERE id = $4
        RETURNING *`,
-      [fecha, descripcion, estado_id, id]
+      [fecha_ingreso, fecha_egreso, estado_id, id]
     );
 
     if (rows.length === 0) {

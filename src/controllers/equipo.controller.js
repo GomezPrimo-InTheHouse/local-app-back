@@ -1,11 +1,65 @@
 import  {pool}  from '../config/db.js';
 
+
+
+export const createEquipo = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso } = req.body;
+
+    if(!tipo || !marca || !modelo || !cliente_id || !fecha_ingreso || !problema){
+      return res.status(400).json({ error: "Campos obligatorios: tipo, marca, modelo, cliente_id, fecha_ingreso, problema, password" });
+    }
+
+    const query = `
+      INSERT INTO equipo (tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *;
+    `;
+
+    const { rows } = await pool.query(query, [tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso]);
+    const nuevoEquipo = rows[0];
+
+    // 2️⃣ Crear ingreso asociado automáticamente
+    const insertIngresoQuery = `
+      INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado_id)
+      VALUES ($1, NOW(), NULL, $2)
+      RETURNING *;
+    `;
+    const { rows: ingresoRows } = await client.query(insertIngresoQuery, [nuevoEquipo.id, estado_id]);
+    const nuevoIngreso = ingresoRows[0];
+
+    await client.query('COMMIT');
+
+    // 3️⃣ Devolver la respuesta estructurada
+    res.status(201).json({
+      equipo: nuevoEquipo,
+      ingreso: nuevoIngreso
+    });
+
+    res.status(201).json(rows[0]);
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // Obtener todos los equipos
 export const getEquipos = async (req, res) => {
-    console.log('ejecutando getequipo')
+    
   try {
-    const { rows } = await pool.query('SELECT * FROM equipo ORDER BY fecha_ingreso DESC');
-    res.json(rows);
+    const { rows } = await pool.query(
+      `
+      SELECT 
+      e.id, e.tipo, e.marca, e.modelo, e.problema, e.password, e.patron,
+      e.fecha_ingreso, e.estado_id, e.cliente_id,
+      c.nombre AS cliente_nombre, c.apellido AS cliente_apellido
+    FROM equipo e
+    JOIN cliente c ON e.cliente_id = c.id
+    ORDER BY e.fecha_ingreso DESC
+      `
+      );
+    res.status(200).json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -40,7 +94,8 @@ export const getEquipoById = async (req, res) => {
           i.id AS ingreso_id,
           i.fecha_ingreso,
           i.fecha_egreso,
-          i.estado AS estado_ingreso,
+          i.estado_id as estado_ingreso,
+          
 
           -- Último presupuesto
           p.id AS presupuesto_id,
@@ -126,112 +181,6 @@ export const getEquipoById = async (req, res) => {
   }
 };
 
-
-
-// Crear equipo
-
-
-// const createEquipo = async (req, res) => {
-//   const client = await pool.connect();
-//   try {
-//     const { tipo, marca, modelo, password, problema, fecha_ingreso, patron, cliente_id } = req.body;
-
-//     // ✅ Validar datos mínimos obligatorios
-//     if (!tipo || !marca || !modelo || !cliente_id) {
-//       return res.status(400).json({ error: "Campos obligatorios: tipo, marca, modelo, cliente_id" });
-//     }
-
-//     await client.query('BEGIN');
-
-//     // 1️⃣ Crear equipo sin presupuesto
-//     const insertEquipoQuery = `
-//       INSERT INTO equipo (tipo, marca, modelo, password, problema, fecha_ingreso, patron, cliente_id)
-//       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-//       RETURNING *;
-//     `;
-//     const equipoValues = [
-//       tipo,
-//       marca,
-//       modelo,
-//       password || null,
-//       problema || null,
-//       fecha_ingreso || new Date(),
-//       patron || null,
-//       cliente_id
-//     ];
-
-//     const { rows: equipoRows } = await client.query(insertEquipoQuery, equipoValues);
-//     const nuevoEquipo = equipoRows[0];
-
-//     // 2️⃣ Crear ingreso asociado automáticamente
-//     const insertIngresoQuery = `
-//       INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado)
-//       VALUES ($1, NOW(), NULL, 'Pendiente')
-//       RETURNING *;
-//     `;
-//     const { rows: ingresoRows } = await client.query(insertIngresoQuery, [nuevoEquipo.id]);
-//     const nuevoIngreso = ingresoRows[0];
-
-//     await client.query('COMMIT');
-
-//     // 3️⃣ Devolver la respuesta estructurada
-//     res.status(201).json({
-//       equipo: nuevoEquipo,
-//       ingreso: nuevoIngreso
-//     });
-
-//   } catch (err) {
-//     await client.query('ROLLBACK');
-//     console.error('❌ Error al crear equipo e ingreso:', err);
-//     res.status(500).json({ error: err.message });
-//   } finally {
-//     client.release();
-//   }
-// };
-
-// CREATE EQUIPO
-export const createEquipo = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { tipo, marca, modelo, problema, patron, cliente_id, estado_id, fecha_ingreso } = req.body;
-
-    if(!tipo || !marca || !modelo || !cliente_id || !fecha_ingreso || !problema){
-      return res.status(400).json({ error: "Campos obligatorios: tipo, marca, modelo, cliente_id, fecha_ingreso, problema" });
-    }
-
-    const query = `
-      INSERT INTO equipo (tipo, marca, modelo, problema, patron, cliente_id, estado_id, fecha_ingreso)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *;
-    `;
-
-    const { rows } = await pool.query(query, [tipo, marca, modelo, problema, patron, cliente_id, estado_id, fecha_ingreso]);
-    const nuevoEquipo = rows[0];
-
-    // 2️⃣ Crear ingreso asociado automáticamente
-    const insertIngresoQuery = `
-      INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado_id)
-      VALUES ($1, NOW(), NULL, $2)
-      RETURNING *;
-    `;
-    const { rows: ingresoRows } = await client.query(insertIngresoQuery, [nuevoEquipo.id, estado_id]);
-    const nuevoIngreso = ingresoRows[0];
-
-    await client.query('COMMIT');
-
-    // 3️⃣ Devolver la respuesta estructurada
-    res.status(201).json({
-      equipo: nuevoEquipo,
-      ingreso: nuevoIngreso
-    });
-
-    res.status(201).json(rows[0]);
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
 //obtener todos los equipos pertenecientes a un cliente por su cliente_id
 
 export const obtenerEquiposbyClientId = async (req, res) =>{
@@ -256,32 +205,12 @@ export const obtenerEquiposbyClientId = async (req, res) =>{
   }
 }
 
-
-
-
 // Actualizar equipo
-//  const updateEquipo = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { tipo, marca, modelo, password, problema, fecha_ingreso, patron, cliente_id } = req.body;
-    
-//     const query = `
-//       UPDATE equipo
-//       SET tipo=$1, marca=$2, modelo=$3, password=$4, problema=$5, fecha_ingreso=$6, patron=$7, cliente_id=$8
-//       WHERE id=$9 RETURNING *`;
-//     const values = [tipo, marca, modelo, password, problema, fecha_ingreso, patron, cliente_id, id];
-//     const { rows } = await pool.query(query, values);
-//     if (rows.length === 0) return res.status(404).json({ msg: 'Equipo no encontrado' });
-//     res.json(rows[0]);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
 export const updateEquipo = async (req, res) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { tipo, marca, modelo, problema, patron, cliente_id, estado_id, fecha_ingreso } = req.body;
+    const { tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso } = req.body;
 
     await client.query("BEGIN");
 
@@ -293,11 +222,12 @@ export const updateEquipo = async (req, res) => {
         marca = COALESCE($2, marca),
         modelo = COALESCE($3, modelo),
         problema = COALESCE($4, problema),
-        patron = COALESCE($5, patron),
-        cliente_id = COALESCE($6, cliente_id),
-        estado_id = COALESCE($7, estado_id),
-        fecha_ingreso = COALESCE($8, fecha_ingreso)
-      WHERE id = $9
+        password = COALESCE($5, password),
+        patron = COALESCE($6, patron),
+        cliente_id = COALESCE($7, cliente_id),
+        estado_id = COALESCE($8, estado_id),
+        fecha_ingreso = COALESCE($9, fecha_ingreso)
+      WHERE id = $10
       RETURNING *;
     `;
     const { rows: equipoRows } = await client.query(updateEquipoQuery, [
@@ -305,6 +235,7 @@ export const updateEquipo = async (req, res) => {
       marca, 
       modelo, 
       problema, 
+      password, 
       patron, 
       cliente_id, 
       estado_id, 
@@ -354,7 +285,6 @@ export const updateEquipo = async (req, res) => {
 };
 
 
-
 // Eliminar equipo
 export const deleteEquipo = async (req, res) => {
   try {
@@ -367,26 +297,36 @@ export const deleteEquipo = async (req, res) => {
   }
 };
 
+
+
 //FILTROS
 
 
-
-// 1) Filtrar por tipo exacto
+// 1) Filtrar por tipo exacto, devuelve tmb el nombre del cliemte
 export const getEquiposByTipo = async (req, res) => {
   const { tipo } = req.params;
 
   try {
     const query = `
-      SELECT * FROM equipo
-      WHERE LOWER(tipo) = LOWER($1)
-      ORDER BY fecha_ingreso DESC
+      SELECT
+        e.*,
+        c.nombre AS cliente_nombre,
+        c.apellido AS cliente_apellido
+      FROM
+        equipo e
+      INNER JOIN
+        cliente c ON e.cliente_id = c.id
+      WHERE
+        LOWER(e.tipo) = LOWER($1)
+      ORDER BY
+        e.fecha_ingreso DESC;
     `;
     const { rows } = await pool.query(query, [tipo]);
 
     res.json({
       status: 'success',
       count: rows.length,
-      data: rows
+      data: rows,
     });
   } catch (error) {
     console.error('Error al filtrar equipos por tipo:', error);
@@ -456,56 +396,10 @@ export const getEquiposByCliente = async (req, res) => {
   }
 };
 
+
 // Obtener todos los equipos con último ingreso y presupuesto
 
-// const getEquiposConDetalle = async (_req, res) => {
-//   try {
-//     const query = `
-//       SELECT 
-//           e.id AS equipo_id,
-//           e.tipo,
-//           e.marca,
-//           e.modelo,
-//           e.problema,
-//           e.patron,
-//           e.cliente_id,
-          
-//           i.id AS ingreso_id,
-//           i.fecha_ingreso,
-//           i.fecha_egreso,
-//           i.estado AS estado_ingreso,
-          
-//           p.id AS presupuesto_id,
-//           p.costo AS costo_presupuesto,
-//           p.total AS total_presupuesto,
-//           p.estado AS estado_presupuesto,
-//           p.fecha AS fecha_presupuesto,
-//           p.observaciones AS observaciones_presupuesto
 
-//       FROM equipo e
-//       LEFT JOIN LATERAL (
-//           SELECT *
-//           FROM ingreso i
-//           WHERE i.equipo_id = e.id
-//           ORDER BY i.fecha_ingreso DESC
-//           LIMIT 1
-//       ) i ON true
-//       LEFT JOIN LATERAL (
-//           SELECT *
-//           FROM presupuesto p
-//           WHERE p.ingreso_id = i.id
-//           ORDER BY p.fecha DESC
-//           LIMIT 1
-//       ) p ON true
-//       ORDER BY e.id;
-//     `;
-
-//     const { rows } = await pool.query(query);
-//     res.json(rows);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
 export const getEquiposConDetalle = async (_req, res) => {
   try {
     const query = `

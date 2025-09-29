@@ -21,6 +21,8 @@
   },
   "homepage": "https://github.com/GomezPrimo-InTheHouse/jgp-backend#readme",
   "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "aws-sdk": "^2.1692.0",
     "axios": "^1.11.0",
     "basic-auth": "^2.0.1",
     "bcrypt": "^6.0.0",
@@ -30,9 +32,11 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
     "nodemon": "^3.1.10",
+    "pdfkit": "^0.17.2",
     "pg": "^8.16.3",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
-    "speakeasy": "^2.0.0"
+    "speakeasy": "^2.0.0",
+    "twilio": "^5.10.0"
   }
 }
