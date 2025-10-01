@@ -1,371 +1,431 @@
 // src/controllers/presupuesto.controller.js
 import  {pool}  from '../config/db.js';
 
-// const createPresupuesto = async (req, res) => {
+import { supabase} from '../config/supabase.js';
+
+// export const createPresupuesto = async (req, res) => {
+//   const { ingreso_id, fecha, costo, total, observaciones, estado_id } = req.body;
+//   console.log(req.body)
 //   try {
-//     const { ingreso_id, fecha, costo, total, observaciones, estado } = req.body;
+//     const result = await pool.query(
+//       `INSERT INTO presupuesto (ingreso_id, fecha, costo, total, observaciones, estado_id)
+//        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+//       [ingreso_id, fecha, costo, total, observaciones, estado_id]
+//     );
 
-//     if (!ingreso_id || !fecha || !total) {
-//       return res.status(400).json({ error: "Campos obligatorios: ingreso_id, fecha, total" });
-//     }
-
-//     const query = `
-//       INSERT INTO presupuesto (ingreso_id, fecha, costo, total, observaciones, estado)
-//       VALUES ($1, $2, $3, $4, $5, $6)
-//       RETURNING *;
-//     `;
-//     const values = [
-//       ingreso_id,
-//       fecha,
-//       costo || 0,
-//       total,
-//       observaciones || null,
-//       estado || 'Pendiente'
-//     ];
-
-//     const { rows } = await pool.query(query, values);
-//     res.status(201).json(rows[0]);
-//   } catch (err) {
-//     console.error('❌ Error al crear presupuesto:', err);
-//     res.status(500).json({ error: err.message });
+//     res.json(result.rows[0]);
+//   } catch (error) {
+//     console.error("Error creando presupuesto:", error);
+//     res.status(500).json({ error: "Error creando presupuesto" });
 //   }
 // };
 
-export const createPresupuesto = async (req, res) => {
-  const { ingreso_id, fecha, costo, total, observaciones, estado_id } = req.body;
-  console.log(req.body)
-  try {
-    const result = await pool.query(
-      `INSERT INTO presupuesto (ingreso_id, fecha, costo, total, observaciones, estado_id)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [ingreso_id, fecha, costo, total, observaciones, estado_id]
-    );
-
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error("Error creando presupuesto:", error);
-    res.status(500).json({ error: "Error creando presupuesto" });
-  }
-};
 
 
-// const getPresupuestos = async (_req, res) => {
+// export const getPresupuestos = async (req, res) => {
 //   try {
-//     const { rows } = await pool.query('SELECT * FROM presupuesto ORDER BY fecha DESC');
+//     const {rows} = await pool.query(
+//       `SELECT p.*, e.nombre AS estado_nombre
+//        FROM presupuesto p
+//        JOIN estado e ON p.estado_id = e.id
+//        ORDER BY p.fecha DESC`
+//     );
+
+//     if(rows.length === 0) {
+//       return res.status(404).json({ message: "No se encontraron presupuestos" });
+//     }
+
+//     if (rows.length > 0) {
+//       res.status(200).json(rows);
+//     }
+//   } catch (error) {
+//     console.error("Error obteniendo presupuestos:", error);
+//     res.status(500).json({ error: "Error obteniendo presupuestos" });
+//   }
+// };
+
+
+// export const getPresupuestosByIngreso = async (req, res) => {
+//   try {
+//     const { ingresoId } = req.params;
+   
+
+//     const { rows } = await pool.query(
+//       'SELECT * FROM presupuesto WHERE ingreso_id = $1 ORDER BY fecha::timestamp DESC',
+//       [ingresoId]
+//     );
 //     res.json(rows);
 //   } catch (err) {
 //     res.status(500).json({ error: err.message });
 //   }
 // };
-export const getPresupuestos = async (req, res) => {
+
+
+
+// export const updatePresupuesto = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { fecha, costo, total, observaciones, estado_id } = req.body;
+
+//     const { rows } = await pool.query(
+//       `UPDATE presupuesto
+//        SET fecha = COALESCE($1, fecha),
+//            costo = COALESCE($2, costo),
+//            total = COALESCE($3, total),
+//            observaciones = COALESCE($4, observaciones),
+//            estado_id = COALESCE($5, estado_id)
+//        WHERE id = $6
+//        RETURNING *`,
+//       [fecha, costo, total, observaciones, estado_id, id]
+//     );
+
+//     if (rows.length === 0) {
+//       return res.status(404).json({ error: 'Presupuesto no encontrado' });
+//     }
+
+//     res.json(rows[0]);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// };
+
+
+
+export const createPresupuesto = async (req, res) => {
+  const { ingreso_id, fecha, costo, total, observaciones, estado_id } = req.body;
+
   try {
-    const {rows} = await pool.query(
-      `SELECT p.*, e.nombre AS estado_nombre
-       FROM presupuesto p
-       JOIN estado e ON p.estado_id = e.id
-       ORDER BY p.fecha DESC`
-    );
+    const { data, error } = await supabase
+      .from('presupuesto')
+      .insert([
+        { ingreso_id, fecha, costo, total, observaciones, estado_id }
+      ])
+      .select()
+      .single();
 
-    if(rows.length === 0) {
-      return res.status(404).json({ message: "No se encontraron presupuestos" });
+    if (error) {
+      console.error('Error creando presupuesto (Supabase):', error);
+      return res.status(500).json({ error: 'Error creando presupuesto' });
     }
 
-    if (rows.length > 0) {
-      res.status(200).json(rows);
-    }
-  } catch (error) {
-    console.error("Error obteniendo presupuestos:", error);
-    res.status(500).json({ error: "Error obteniendo presupuestos" });
+    return res.status(200).json(data); // misma salida que tu original
+  } catch (err) {
+    console.error('Excepción creando presupuesto:', err);
+    return res.status(500).json({ error: 'Error creando presupuesto' });
   }
 };
 
+/**
+ * Obtener todos los presupuestos
+ * Debe devolver p.* y un campo adicional estado_nombre (como tu SELECT original)
+ * Devuelve 404 si no encuentra ninguno (igual que tu versión original).
+ */
+export const getPresupuestos = async (req, res) => {
+  try {
+    // Seleccionamos la relación estado a través de estado_id
+    const { data, error } = await supabase
+      .from('presupuesto')
+      .select(`
+        id,
+        ingreso_id,
+        fecha,
+        costo,
+        total,
+        observaciones,
+        estado_id,
+        estado:estado_id ( nombre )
+      `)
+      .order('fecha', { ascending: false });
 
+    if (error) {
+      console.error('Error obteniendo presupuestos (Supabase):', error);
+      return res.status(500).json({ error: 'Error obteniendo presupuestos' });
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ message: 'No se encontraron presupuestos' });
+    }
+
+    // Normalizar para devolver exactamente p.* + estado_nombre
+    const rows = data.map((r) => {
+      const estadoObj = Array.isArray(r.estado) ? r.estado[0] : r.estado;
+      return {
+        id: r.id,
+        ingreso_id: r.ingreso_id,
+        fecha: r.fecha,
+        costo: r.costo,
+        total: r.total,
+        observaciones: r.observaciones,
+        estado_id: r.estado_id,
+        estado_nombre: estadoObj ? estadoObj.nombre : null
+      };
+    });
+
+    return res.status(200).json(rows);
+  } catch (err) {
+    console.error('Excepción obteniendo presupuestos:', err);
+    return res.status(500).json({ error: 'Error obteniendo presupuestos' });
+  }
+};
+
+/**
+ * Obtener presupuestos por ingreso
+ * Ordena por fecha desc — devuelve array (puede ser vacío).
+ */
 export const getPresupuestosByIngreso = async (req, res) => {
   try {
     const { ingresoId } = req.params;
-   
 
-    const { rows } = await pool.query(
-      'SELECT * FROM presupuesto WHERE ingreso_id = $1 ORDER BY fecha::timestamp DESC',
-      [ingresoId]
-    );
-    res.json(rows);
+    const { data, error } = await supabase
+      .from('presupuesto')
+      .select('*')
+      .eq('ingreso_id', ingresoId)
+      .order('fecha', { ascending: false });
+
+    if (error) {
+      console.error('Error obteniendo presupuestos por ingreso (Supabase):', error);
+      return res.status(500).json({ error: error.message || 'Error obteniendo presupuestos' });
+    }
+
+    return res.status(200).json(data || []);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Excepción obteniendo presupuestos por ingreso:', err);
+    return res.status(500).json({ error: err.message });
   }
 };
 
-
-
+/**
+ * Actualizar presupuesto
+ * Usa RPC 'actualizar_presupuesto' (transaccional en DB, mantiene valores si no se envía campo)
+ * Devuelve exactamente la fila actualizada, o 404 si no existe.
+ */
 export const updatePresupuesto = async (req, res) => {
   try {
     const { id } = req.params;
     const { fecha, costo, total, observaciones, estado_id } = req.body;
 
-    const { rows } = await pool.query(
-      `UPDATE presupuesto
-       SET fecha = COALESCE($1, fecha),
-           costo = COALESCE($2, costo),
-           total = COALESCE($3, total),
-           observaciones = COALESCE($4, observaciones),
-           estado_id = COALESCE($5, estado_id)
-       WHERE id = $6
-       RETURNING *`,
-      [fecha, costo, total, observaciones, estado_id, id]
-    );
+    const params = {
+      _id: Number(id),
+      _fecha: fecha ?? null,
+      _costo: (typeof costo !== 'undefined') ? costo : null,
+      _total: (typeof total !== 'undefined') ? total : null,
+      _observaciones: observaciones ?? null,
+      _estado_id: (typeof estado_id !== 'undefined') ? estado_id : null
+    };
 
-    if (rows.length === 0) {
+    const { data, error } = await supabase.rpc('actualizar_presupuesto', params);
+
+    if (error) {
+      console.error('Error RPC actualizar_presupuesto:', error);
+      return res.status(500).json({ error: error.message || 'Error actualizando presupuesto' });
+    }
+
+    // rpc returns array (setof) — si no existe devuelve [] -> tratamos como 404
+    const updated = Array.isArray(data) && data.length > 0 ? data[0] : data;
+
+    if (!updated || (Array.isArray(updated) && updated.length === 0)) {
       return res.status(404).json({ error: 'Presupuesto no encontrado' });
     }
 
-    res.json(rows[0]);
+    return res.status(200).json(updated);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Excepción updatePresupuesto:', err);
+    return res.status(500).json({ error: err.message });
   }
 };
-
-
 
 export const deletePresupuesto = async (req, res) => {
   try {
     const { id } = req.params;
-    const { rowCount } = await pool.query('DELETE FROM presupuesto WHERE id = $1', [id]);
 
-    if (rowCount === 0) return res.status(404).json({ error: 'Presupuesto no encontrado' });
+    // Intentamos eliminar y pedir que devuelva la fila borrada
+    const { data, error } = await supabase
+      .from('presupuesto')
+      .delete()
+      .eq('id', id)
+      .select() // pedimos la representación borrada
+      .single();
 
-    res.json({ message: 'Presupuesto eliminado correctamente' });
+    if (error) {
+      // Si el error indica que no hay filas, respondemos 404
+      // Nota: Supabase puede devolver error si no existe; aquí lo manejamos de forma general.
+      // Si el error no es por "no encontrado", lo lanzamos más abajo.
+      if (error.code === 'PGRST116' || String(error.message).toLowerCase().includes('no rows')) {
+        return res.status(404).json({ error: 'Presupuesto no encontrado' });
+      }
+      console.error('Error eliminando presupuesto (Supabase):', error);
+      return res.status(500).json({ error: error.message || 'Error eliminando presupuesto' });
+    }
+
+    // Si data es null -> 404
+    if (!data) {
+      return res.status(404).json({ error: 'Presupuesto no encontrado' });
+    }
+
+    return res.json({ message: 'Presupuesto eliminado correctamente' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Excepción deletePresupuesto:', err);
+    return res.status(500).json({ error: err.message });
   }
 };
 
-//obtener presupuestos por equipo
+//obtener presupuestos por equipo supabase
 
+// export const getPresupuestosByEquipo = async (req, res) => {
+//   try {
+//     const { equipoId } = req.params;
+
+//     const query = `
+//       SELECT
+//         e.id AS equipo_id,
+//         e.tipo,
+//         e.marca,
+//         e.modelo,
+//         e.problema,
+//         es_eq.id AS estado_equipo_id,
+//         es_eq.nombre AS estado_equipo_nombre,
+
+//         i.id AS ingreso_id,
+//         i.fecha_ingreso,
+//         i.fecha_egreso,
+//         es_in.id AS estado_ingreso_id,
+//         es_in.nombre AS estado_ingreso_nombre,
+
+//         p.id AS presupuesto_id,
+//         p.fecha AS fecha_presupuesto,
+//         p.costo AS costo_presupuesto,
+//         p.total AS total_presupuesto,
+//         p.observaciones AS observaciones_presupuesto,
+//         es_pr.id AS estado_presupuesto_id,
+//         es_pr.nombre AS estado_presupuesto_nombre
+
+//       FROM equipo e
+//       JOIN estado es_eq ON es_eq.id = e.estado_id
+
+//       LEFT JOIN LATERAL (
+//           SELECT *
+//           FROM ingreso i
+//           WHERE i.equipo_id = e.id
+//           ORDER BY i.fecha_ingreso DESC
+//       ) i ON true
+//       LEFT JOIN estado es_in ON es_in.id = i.estado_id
+
+//       LEFT JOIN LATERAL (
+//           SELECT *
+//           FROM presupuesto p
+//           WHERE p.ingreso_id = i.id
+//           ORDER BY p.fecha DESC
+//       ) p ON true
+//       LEFT JOIN estado es_pr ON es_pr.id = p.estado_id
+
+//       WHERE e.id = $1;
+//     `;
+
+//     const { rows } = await pool.query(query, [equipoId]);
+//     res.json(rows);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// };
+
+
+//postgress
 export const getPresupuestosByEquipo = async (req, res) => {
   try {
     const { equipoId } = req.params;
+    const equipoIdNum = Number(equipoId);
 
-    const query = `
-      SELECT
-        e.id AS equipo_id,
-        e.tipo,
-        e.marca,
-        e.modelo,
-        e.problema,
-        es_eq.id AS estado_equipo_id,
-        es_eq.nombre AS estado_equipo_nombre,
+    if (Number.isNaN(equipoIdNum)) {
+      return res.status(400).json({ error: 'equipoId inválido' });
+    }
 
-        i.id AS ingreso_id,
-        i.fecha_ingreso,
-        i.fecha_egreso,
-        es_in.id AS estado_ingreso_id,
-        es_in.nombre AS estado_ingreso_nombre,
+    const { data, error } = await supabase
+      .rpc('obtener_presupuestos_por_equipo', { _equipo_id: equipoIdNum });
 
-        p.id AS presupuesto_id,
-        p.fecha AS fecha_presupuesto,
-        p.costo AS costo_presupuesto,
-        p.total AS total_presupuesto,
-        p.observaciones AS observaciones_presupuesto,
-        es_pr.id AS estado_presupuesto_id,
-        es_pr.nombre AS estado_presupuesto_nombre
+    if (error) {
+      console.error('Error RPC obtener_presupuestos_por_equipo:', error);
+      return res.status(500).json({ error: error.message || error });
+    }
 
-      FROM equipo e
-      JOIN estado es_eq ON es_eq.id = e.estado_id
-
-      LEFT JOIN LATERAL (
-          SELECT *
-          FROM ingreso i
-          WHERE i.equipo_id = e.id
-          ORDER BY i.fecha_ingreso DESC
-      ) i ON true
-      LEFT JOIN estado es_in ON es_in.id = i.estado_id
-
-      LEFT JOIN LATERAL (
-          SELECT *
-          FROM presupuesto p
-          WHERE p.ingreso_id = i.id
-          ORDER BY p.fecha DESC
-      ) p ON true
-      LEFT JOIN estado es_pr ON es_pr.id = p.estado_id
-
-      WHERE e.id = $1;
-    `;
-
-    const { rows } = await pool.query(query, [equipoId]);
-    res.json(rows);
+    // data es un array (puede ser [], o null si no hay nada)
+    return res.status(200).json(data ?? []);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Excepción getPresupuestosByEquipo:', err);
+    return res.status(500).json({ error: err.message || String(err) });
   }
 };
 
-// export const getBalancePresupuestos = async (req, res) => {
-//   try {
-//     const query = `
-//       SELECT 
-//         i.id AS ingreso_id,
-//         i.equipo_id,
-//         i.fecha_ingreso,
-//         COALESCE(SUM(p.costo), 0) AS costo,
-//         COALESCE(SUM(p.total), 0) AS total
-//       FROM ingreso i
-//       LEFT JOIN presupuesto p ON p.ingreso_id = i.id
-//       GROUP BY i.id, i.equipo_id
-//       ORDER BY i.id;
-//     `;
-
-//     const { rows } = await pool.query(query);
-
-//     //formatear fecha para mostrar año / mes / dia
-//     rows.forEach(r => {
-//       r.fecha_ingreso = new Date(r.fecha_ingreso).toLocaleDateString('es-ES');
-//     });
-
-//     // Calcular balance_final para cada ingreso
-//     const balances = rows.map(r => ({
-//       ingreso_id: r.ingreso_id,
-//       equipo_id: r.equipo_id,
-//       fecha_ingreso: r.fecha_ingreso,
-//       costo: Number(r.costo),
-//       total: Number(r.total),
-//       balance_final: Number(r.total) - Number(r.costo)
-//     }));
-
-//     res.json({ balances });
-
-
-//   } catch (error) {
-//     console.error('Error en getBalancePresupuestos:', error.message);
-//     res.status(500).json({ error: 'Error al obtener balances de presupuestos' });
-//   }
-// };
-
-// export const getBalancePresupuestos = async (req, res) => {
-//   try {
-//     const { equipo_id } = req.query; // opcional: ?equipo_id=50
-
-//     const query = `
-//       WITH per_ingreso AS (
-//         SELECT
-//           i.id AS ingreso_id,
-//           i.equipo_id,
-//           i.fecha_ingreso,
-//           COALESCE(SUM(p.costo), 0)::numeric AS costo_ingreso,
-//           COALESCE(SUM(p.total), 0)::numeric AS total_ingreso
-//         FROM ingreso i
-//         LEFT JOIN presupuesto p ON p.ingreso_id = i.id
-//         ${ equipo_id ? 'WHERE i.equipo_id = $1' : '' }
-//         GROUP BY i.id, i.equipo_id, i.fecha_ingreso
-//       )
-//       SELECT
-//         pi.equipo_id,
-//         json_agg(
-//           json_build_object(
-//             'ingreso_id', pi.ingreso_id,
-//             'fecha_ingreso', TO_CHAR(pi.fecha_ingreso, 'DD/MM/YYYY'),
-//             'costo', (pi.costo_ingreso)::numeric,
-//             'total', (pi.total_ingreso)::numeric,
-//             'balance', (pi.total_ingreso - pi.costo_ingreso)::numeric
-//           ) ORDER BY pi.fecha_ingreso DESC
-//         ) AS ingresos,
-//         SUM(pi.costo_ingreso)::numeric AS costo_total,
-//         SUM(pi.total_ingreso)::numeric AS total_total,
-//         SUM(pi.total_ingreso - pi.costo_ingreso)::numeric AS balance_final
-//       FROM per_ingreso pi
-//       GROUP BY pi.equipo_id
-//       ORDER BY pi.equipo_id;
-//     `;
-
-//     const { rows } = equipo_id
-//       ? await pool.query(query, [equipo_id])
-//       : await pool.query(query);
-
-//     // Convertir numeros (numeric) a Number y devolver formato consistente
-//     const data = rows.map(r => ({
-//       equipo_id: Number(r.equipo_id),
-//       ingresos: (r.ingresos || []).map(i => ({
-//         ingreso_id: Number(i.ingreso_id),
-//         fecha_ingreso: i.fecha_ingreso,            // 'DD/MM/YYYY' según TO_CHAR
-//         costo: Number(i.costo),
-//         total: Number(i.total),
-//         balance: Number(i.balance)
-//       })),
-//       costo_total: Number(r.costo_total ?? 0),
-//       total_total: Number(r.total_total ?? 0),
-//       balance_final: Number(r.balance_final ?? 0)
-//     }));
-
-//     return res.status(200).json({ success: true, data });
-//   } catch (error) {
-//     console.error('Error en getBalancePresupuestosPorEquipo:', error);
-//     return res.status(500).json({ success: false, error: 'Error al obtener balances por equipo' });
-//   }
-// };
-
+//supabase rpc obtener_balance_presupuestos
 
 export const getBalancePresupuestos = async (req, res) => {
   try {
-    const { equipo_id } = req.query; // opcional
+    const { equipo_id } = req.query;
+    let rpcResult;
+    let error;
 
-    const query = `
-      SELECT
-        i.equipo_id,
-        MAX(e.tipo)          AS tipo,
-        MAX(e.marca)         AS marca,
-        MAX(e.modelo)        AS modelo,
-        TO_CHAR(date_trunc('month', COALESCE(p.fecha, i.fecha_ingreso)), 'MM/YYYY') AS mes,
-        json_agg(
-          json_build_object(
-            'presupuesto_id', p.id,
-            'ingreso_id', i.id,
-            'fecha_presupuesto', TO_CHAR(p.fecha, 'DD/MM/YYYY'),
-            'costo_presupuesto', COALESCE(p.costo, 0),
-            'total_presupuesto', COALESCE(p.total, 0),
-            'balance', (COALESCE(p.total,0) - COALESCE(p.costo,0))
-          ) ORDER BY COALESCE(p.fecha, i.fecha_ingreso) DESC NULLS LAST
-        ) FILTER (WHERE p.id IS NOT NULL) AS presupuestos,
-        SUM(COALESCE(p.costo,0))::numeric AS costo_total,
-        SUM(COALESCE(p.total,0))::numeric AS total_total,
-        SUM(COALESCE(p.total,0) - COALESCE(p.costo,0))::numeric AS balance_final
-      FROM ingreso i
-      LEFT JOIN presupuesto p ON p.ingreso_id = i.id
-      LEFT JOIN equipo e ON e.id = i.equipo_id
-      ${equipo_id ? "WHERE i.equipo_id = $1" : ""}
-      GROUP BY i.equipo_id, date_trunc('month', COALESCE(p.fecha, i.fecha_ingreso))
-      ORDER BY i.equipo_id, date_trunc('month', COALESCE(p.fecha, i.fecha_ingreso)) DESC;
-    `;
+    if (typeof equipo_id !== 'undefined' && equipo_id !== null && equipo_id !== '') {
+      const equipoIdNum = Number(equipo_id);
+      if (Number.isNaN(equipoIdNum)) {
+        return res.status(400).json({ success: false, error: 'equipo_id inválido' });
+      }
+      ({ data: rpcResult, error } = await supabase
+        .rpc('obtener_balance_presupuestos', { _equipo_id: equipoIdNum }));
+    } else {
+      ({ data: rpcResult, error } = await supabase.rpc('obtener_balance_presupuestos'));
+    }
 
-    const result = equipo_id
-      ? await pool.query(query, [equipo_id])
-      : await pool.query(query);
+    if (error) {
+      console.error('Error RPC obtener_balance_presupuestos:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Error al obtener balances' });
+    }
 
-    const rows = result.rows;
+    const rows = rpcResult || [];
 
-    // Mapear a JSON consistente
-    const data = rows.map((r) => ({
-      equipo_id: Number(r.equipo_id),
-      tipo: r.tipo ?? null,
-      marca: r.marca ?? null,
-      modelo: r.modelo ?? null,
-      mes: r.mes, // "MM/YYYY"
-      presupuestos: (r.presupuestos || []).map((p) => ({
-        presupuesto_id: Number(p.presupuesto_id),
-        ingreso_id: Number(p.ingreso_id),
-        fecha_presupuesto: p.fecha_presupuesto || null,
-        costo_presupuesto: Number(p.costo_presupuesto ?? 0),
-        total_presupuesto: Number(p.total_presupuesto ?? 0),
-        balance: Number(p.balance ?? 0),
-      })),
-      costo_total: Number(r.costo_total ?? 0),
-      total_total: Number(r.total_total ?? 0),
-      balance_final: Number(r.balance_final ?? 0),
-    }));
+    // Normalizar y tipar igual que en tu código original
+    const data = (rows).map((r) => {
+      // r.presupuestos puede venir como string (JSON) o como objeto. Normalizamos a array.
+      let presupuestosArr = [];
+      if (r.presupuestos) {
+        if (typeof r.presupuestos === 'string') {
+          try {
+            presupuestosArr = JSON.parse(r.presupuestos);
+          } catch (e) {
+            // en caso de parse fallido, dejar array vacío y loggear
+            console.warn('No se pudo parsear r.presupuestos:', e);
+            presupuestosArr = [];
+          }
+        } else if (Array.isArray(r.presupuestos)) {
+          presupuestosArr = r.presupuestos;
+        } else {
+          // si es objeto único o null
+          presupuestosArr = [];
+        }
+      }
+
+      return {
+        equipo_id: Number(r.equipo_id),
+        tipo: r.tipo ?? null,
+        marca: r.marca ?? null,
+        modelo: r.modelo ?? null,
+        mes: r.mes ?? null, // "MM/YYYY"
+        presupuestos: (presupuestosArr || []).map((p) => ({
+          presupuesto_id: Number(p.presupuesto_id ?? 0),
+          ingreso_id: Number(p.ingreso_id ?? 0),
+          fecha_presupuesto: p.fecha_presupuesto ?? null,
+          costo_presupuesto: Number(p.costo_presupuesto ?? 0),
+          total_presupuesto: Number(p.total_presupuesto ?? 0),
+          balance: Number(p.balance ?? 0),
+        })),
+        costo_total: Number(r.costo_total ?? 0),
+        total_total: Number(r.total_total ?? 0),
+        balance_final: Number(r.balance_final ?? 0),
+      };
+    });
 
     return res.status(200).json({ success: true, data });
   } catch (error) {
-    console.error("Error en getBalancePresupuestos:", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Error al obtener balances por equipo y mes" });
+    console.error('Error en getBalancePresupuestos:', error);
+    return res.status(500).json({ success: false, error: 'Error al obtener balances por equipo y mes' });
   }
 };
 

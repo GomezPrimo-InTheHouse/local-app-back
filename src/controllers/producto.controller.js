@@ -218,15 +218,62 @@ export const getProductoById = async (req, res) => {
 };
 
 // ✅ Actualizar producto
+// export const updateProducto = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { nombre, stock, precio, descripcion, estado_id, categoria, costo } = req.body;
+
+//     // 🔎 Validar existencia de producto
+//     const { data: existing, error: existingError } = await supabase
+//       .from("producto")
+//       .select("id")
+//       .eq("id", id)
+//       .single();
+
+//     if (existingError && existingError.code === "PGRST116") {
+//       return res.status(404).json({ success: false, error: "Producto no encontrado" });
+//     }
+//     if (existingError) throw existingError;
+
+//     // 🔎 Validar estado_id si viene
+//     if (estado_id) {
+//       const { data: estadoRows, error: estadoError } = await supabase
+//         .from("estado")
+//         .select("id")
+//         .eq("id", estado_id);
+
+//       if (estadoError) throw estadoError;
+//       if (!estadoRows || estadoRows.length === 0) {
+//         return res.status(400).json({ success: false, error: `El estado_id ${estado_id} no existe` });
+//       }
+//     }
+
+//     // ✅ Actualizar
+//     const { data, error } = await supabase
+//       .from("producto")
+//       .update({ nombre, stock, precio, descripcion, estado_id, categoria, costo })
+//       .eq("id", id)
+//       .select()
+//       .single();
+
+//     if (error) throw error;
+
+//     res.status(200).json({ success: true, data });
+//   } catch (error) {
+//     console.error("Error en updateProducto:", error.message);
+//     res.status(500).json({ success: false, error: "Error al actualizar producto" });
+//   }
+// };
+
 export const updateProducto = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, stock, precio, descripcion, estado_id, categoria, costo } = req.body;
+    const { nombre, stock, precio, descripcion, estado_id, categoria, costo, cantidad, operacion } = req.body;
 
     // 🔎 Validar existencia de producto
     const { data: existing, error: existingError } = await supabase
       .from("producto")
-      .select("id")
+      .select("id, stock")
       .eq("id", id)
       .single();
 
@@ -235,7 +282,23 @@ export const updateProducto = async (req, res) => {
     }
     if (existingError) throw existingError;
 
-    // 🔎 Validar estado_id si viene
+    let newStock = stock;
+
+    // ✅ Si viene operacion + cantidad => modificar stock actual
+    if (operacion && cantidad !== undefined) {
+      if (operacion === "incrementar") {
+        newStock = existing.stock + cantidad;
+      } else if (operacion === "decrementar") {
+        newStock = existing.stock - cantidad;
+        if (newStock < 0) {
+          return res.status(400).json({ success: false, error: "Stock insuficiente" });
+        }
+      } else {
+        return res.status(400).json({ success: false, error: "Operación inválida, use 'incrementar' o 'decrementar'" });
+      }
+    }
+
+    // ✅ Validar estado_id si viene
     if (estado_id) {
       const { data: estadoRows, error: estadoError } = await supabase
         .from("estado")
@@ -248,10 +311,20 @@ export const updateProducto = async (req, res) => {
       }
     }
 
-    // ✅ Actualizar
+    // Construir payload dinámicamente (no pisar campos no enviados)
+    const updatePayload = {};
+    if (nombre !== undefined) updatePayload.nombre = nombre;
+    if (precio !== undefined) updatePayload.precio = precio;
+    if (descripcion !== undefined) updatePayload.descripcion = descripcion;
+    if (estado_id !== undefined) updatePayload.estado_id = estado_id;
+    if (categoria !== undefined) updatePayload.categoria = categoria;
+    if (costo !== undefined) updatePayload.costo = costo;
+    if (newStock !== undefined) updatePayload.stock = newStock;
+
+    // ✅ Actualizar en Supabase
     const { data, error } = await supabase
       .from("producto")
-      .update({ nombre, stock, precio, descripcion, estado_id, categoria, costo })
+      .update(updatePayload)
       .eq("id", id)
       .select()
       .single();
@@ -284,5 +357,39 @@ export const deleteProducto = async (req, res) => {
   } catch (error) {
     console.error("Error en deleteProducto:", error.message);
     res.status(500).json({ success: false, error: "Error al eliminar producto" });
+  }
+};
+
+export const buscarProductos = async (req, res) => {
+  const { nombre } = req.query; // Ej: /productos/buscar?nombre=mouse
+
+  try {
+    if (!nombre || nombre.trim() === "") {
+      return res.status(400).json({
+        success: false,
+        error: "Debe proporcionar un nombre para buscar",
+      });
+    }
+
+    // 🔹 Opción 1: usar RPC
+    // const { data, error } = await supabase.rpc("buscar_productos_v2", {
+    //   p_nombre: nombre,
+    // });
+
+    // 🔹 Opción 2: si no querés RPC, usar .ilike()
+    const { data, error } = await supabase
+      .from("producto")
+      .select("*")
+      .ilike("nombre", `%${nombre}%`);
+
+    if (error) throw error;
+
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error("Error en buscarProductos:", error.message);
+    res.status(500).json({
+      success: false,
+      error: "Error al buscar productos",
+    });
   }
 };

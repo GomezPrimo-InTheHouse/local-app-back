@@ -316,6 +316,7 @@
 // };
 
 import { supabase } from "../config/supabase.js";
+import { updateProducto } from "./producto.controller.js";
 
 // ✅ Crear una nueva venta
 // export const createVenta = async (req, res) => {
@@ -371,50 +372,54 @@ import { supabase } from "../config/supabase.js";
 // };
 export const createVenta = async (req, res) => {
   try {
-    const { cliente_id, detalles = [], monto_abonado = 0 } = req.body;
+    console.log("createVenta body:", req.body);
+    const { cliente_id, detalles = [], monto_abonado = 0, fecha, saldo, total } = req.body;
 
-    // 1) Si viene cliente_id, validar que exista
+    // 1️⃣ Validar cliente si viene
     if (cliente_id != null) {
       const { data: cliente, error: clienteErr } = await supabase
-        .from('cliente')
-        .select('id')
-        .eq('id', cliente_id)
+        .from("cliente")
+        .select("id")
+        .eq("id", cliente_id)
         .maybeSingle();
 
-      if (clienteErr && clienteErr.code !== 'PGRST116') {
-        console.error('Error comprobando cliente:', clienteErr);
+      if (clienteErr && clienteErr.code !== "PGRST116") {
+        console.error("Error comprobando cliente:", clienteErr);
         return res.status(500).json({ success: false, error: clienteErr.message });
       }
 
-      console.log('Cliente encontrado:', cliente);
-      // if (!cliente) {
-      //   return res.status(400).json({ success: false, error: 'Cliente no existe' });
-      // }
+      if (!cliente) {
+        return res.status(400).json({ success: false, error: "Cliente no existe" });
+      }
     }
 
-    // 2) Recomendado: crear una función RPC atómica create_venta_rpc que haga insert venta + detalles + stock
-    // Si no querés crear la RPC: validá/insertá con cuidado (pero supabase-js no soporta multi-statement transaccional desde el cliente).
-    // Aquí recomiendo crear una RPC (más abajo doy SQL para create_venta_rpc).
-    const { data, error } = await supabase.rpc('create_venta_rpc', {
-      p_cliente_id: cliente_id ?? null,
-      p_detalles: detalles ?? [],
-      p_monto_abonado: monto_abonado ?? 0
-    });
+    // 2️⃣ Llamar al RPC que hace todo atómicamente
+    const { data, error } = await supabase.rpc("create_venta_rpc", {
+  p_cliente_id: cliente_id,
+  p_detalles: detalles,
+  p_monto_abonado: monto_abonado ?? 0
+});
+
 
 
     if (error) {
-      console.error('Error en create_venta_rpc:', error);
+      console.error("Error en create_venta_rpc:", error);
       return res.status(500).json({ success: false, error: error.message });
     }
 
-    return res.status(201).json({ success: true, data });
+    return res.status(201).json({
+      success: true,
+      message: "Venta creada correctamente",
+      data
+    });
   } catch (err) {
-    console.error('Error en createVenta:', err);
-    return res.status(500).json({ success: false, error: 'Error al crear venta' });
+    console.error("Error en createVenta:", err);
+    return res.status(500).json({ success: false, error: "Error al crear venta" });
   }
 };
 
-// ✅ Obtener todas las ventas con detalles
+
+// ✅ Obtener todas las ventas con detalles where estado_id = 19
 export const getVentas = async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -426,6 +431,7 @@ export const getVentas = async (req, res) => {
           id, producto_id, cantidad, precio_unitario, subtotal
         )
       `)
+      .eq("estado_id", 19) // solo activas
       .order("fecha", { ascending: false });
 
     if (error) throw error;
@@ -463,30 +469,100 @@ export const getVentaById = async (req, res) => {
   }
 };
 
-// ✅ Eliminar venta
+
+// ✅ Eliminar venta cambiando a estado_id = 20 (inactivo)
+// export const deleteVenta = async (req, res) => {
+//   const { id } = req.params;
+
+//   try {
+//     // 1️⃣ Marcar los detalles de la venta como inactivos
+//     const { error: detalleError } = await supabase
+//       .from("detalle_venta")
+//       .update({ estado_id: 20 }) // Estado "inactivo"
+//       .eq("venta_id", id);
+
+//     if (detalleError) throw detalleError;
+
+//     // 2️⃣ Marcar la venta como inactiva
+//     const { error: ventaError } = await supabase
+//       .from("venta")
+//       .update({ estado_id: 20 }) // Estado "inactivo"
+//       .eq("id", id);
+
+//     if (ventaError) throw ventaError;
+
+//     res.json({ success: true, message: "Venta dada de baja correctamente" });
+//   } catch (error) {
+//     console.error("Error en deleteVenta:", error.message);
+//     res.status(500).json({ success: false, error: "Error al dar de baja la venta" });
+//   }
+// };
+
 export const deleteVenta = async (req, res) => {
   const { id } = req.params;
+
   try {
-    // Primero borro detalles
+    // 1️⃣ Obtener detalles de la venta
+    const { data: detalles, error: detalleFetchError } = await supabase
+      .from("detalle_venta")
+      .select("producto_id, cantidad")
+      .eq("venta_id", id)
+      .eq("estado_id", 19); // solo los activos
+
+    if (detalleFetchError) throw detalleFetchError;
+
+    if (!detalles || detalles.length === 0) {
+      return res.status(404).json({ error: "No se encontraron detalles de la venta." });
+    }
+
+    // 2️⃣ Restaurar stock de cada producto
+    for (const detalle of detalles) {
+      try {
+        // const url = `http://localhost:7001/producto/${detalle.producto_id}`; // ajustá el host/puerto/basepath
+        // console.log("Llamando a:", url);
+        // console.log("Payload:", { cantidad: detalle.cantidad, operacion: "incrementar" });
+
+        // await axios.put(
+        //   url, // ajustá el host/puerto/basepath
+        //   { cantidad: detalle.cantidad, operacion: "incrementar" } // 🚨 convención: que updateProducto interprete operacion
+        // );
+
+        // Usar la función interna para evitar llamada HTTP
+        await updateProducto(
+          { params: { id: detalle.producto_id }, body: { cantidad: detalle.cantidad, operacion: "incrementar" } },
+          { status: () => ({ json: () => { } }) } // mock res
+        );
+      } catch (stockError) {
+        console.error(
+          `Error al actualizar stock del producto ${detalle.producto_id}:`,
+          stockError.message
+        );
+      }
+    }
+
+    // 3️⃣ Marcar los detalles como inactivos
     const { error: detalleError } = await supabase
       .from("detalle_venta")
-      .delete()
+      .update({ estado_id: 20 }) // Estado "inactivo"
       .eq("venta_id", id);
+
     if (detalleError) throw detalleError;
 
-    // Después la venta
+    // 4️⃣ Marcar la venta como inactiva
     const { error: ventaError } = await supabase
       .from("venta")
-      .delete()
+      .update({ estado_id: 20 }) // Estado "inactivo"
       .eq("id", id);
+
     if (ventaError) throw ventaError;
 
-    res.status(204).send();
+    res.json({ success: true, message: "Venta dada de baja correctamente y stock restaurado" });
   } catch (error) {
     console.error("Error en deleteVenta:", error.message);
-    res.status(500).json({ success: false, error: "Error al eliminar venta" });
+    res.status(500).json({ success: false, error: "Error al dar de baja la venta" });
   }
 };
+
 
 export const updateVenta = async (req, res) => {
   const { id } = req.params;

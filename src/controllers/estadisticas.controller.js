@@ -1,5 +1,5 @@
 import { pool } from '../config/db.js';
-
+import { supabase } from '../config/supabase.js';
 /**
  * 1️⃣ Trabajos realizados en el mes + dinero obtenido
  */
@@ -164,6 +164,122 @@ export const getEquiposComunes = async (req, res) => {
 };
 
 
+// export const getEstadisticasPorMes = async (req, res) => {
+//   try {
+//     const { mes, anio } = req.query;
+
+//     if (!mes) {
+//       return res.status(400).json({ error: 'Debe proporcionar el parámetro "mes" (1-12)' });
+//     }
+
+//     const year = anio || new Date().getFullYear();
+
+//     // 1️⃣ Trabajos realizados en el mes (detalle con balances)
+//     const trabajosMesQuery = `
+//       SELECT 
+//         c.id AS cliente_id,
+//         c.nombre AS cliente_nombre,
+//         c.apellido AS cliente_apellido,
+//         e.id AS equipo_id,
+//         e.tipo,
+//         e.marca,
+//         e.modelo,
+//         COALESCE(SUM(p.costo), 0) AS costo_total,
+//         COALESCE(SUM(p.total), 0) AS total_facturado,
+//         (COALESCE(SUM(p.total), 0) - COALESCE(SUM(p.costo), 0)) AS balance_final
+//       FROM ingreso i
+//       INNER JOIN equipo e ON i.equipo_id = e.id
+//       INNER JOIN cliente c ON e.cliente_id = c.id
+//       LEFT JOIN presupuesto p ON p.ingreso_id = i.id
+//       WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
+//         AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2
+//       GROUP BY c.id, e.id
+//       ORDER BY balance_final DESC;
+//     `;
+//     const { rows: trabajosMes } = await pool.query(trabajosMesQuery, [mes, year]);
+
+//     // 2️⃣ Totales acumulados del mes (resumen general)
+//     const totalesMesQuery = `
+//       SELECT 
+//         COALESCE(SUM(p.costo), 0) AS costo_total,
+//         COALESCE(SUM(p.total), 0) AS total_facturado,
+//         (COALESCE(SUM(p.total), 0) - COALESCE(SUM(p.costo), 0)) AS balance_total
+//       FROM ingreso i
+//       LEFT JOIN presupuesto p ON p.ingreso_id = i.id
+//       WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
+//         AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2;
+//     `;
+//     const { rows: [totalesMes] } = await pool.query(totalesMesQuery, [mes, year]);
+
+//     // 3️⃣ Clientes frecuentes
+//     const clientesFrecuentesQuery = `
+//       SELECT 
+//         c.id AS cliente_id,
+//         c.nombre,
+//         c.apellido,
+//         COUNT(e.id) AS equipos_ingresados
+//       FROM cliente c
+//       INNER JOIN equipo e ON e.cliente_id = c.id
+//       INNER JOIN ingreso i ON i.equipo_id = e.id
+//       WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
+//         AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2
+//       GROUP BY c.id
+//       ORDER BY equipos_ingresados DESC
+//       LIMIT 10;
+//     `;
+//     const { rows: clientesFrecuentes } = await pool.query(clientesFrecuentesQuery, [mes, year]);
+
+//     // 4️⃣ Reparaciones comunes
+//     const reparacionesComunesQuery = `
+//       SELECT 
+//         e.problema,
+//         COUNT(*) AS cantidad
+//       FROM equipo e
+//       INNER JOIN ingreso i ON i.equipo_id = e.id
+//       WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
+//         AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2
+//       GROUP BY e.problema
+//       ORDER BY cantidad DESC
+//       LIMIT 10;
+//     `;
+//     const { rows: reparacionesComunes } = await pool.query(reparacionesComunesQuery, [mes, year]);
+
+//     // 5️⃣ Equipos más comunes
+//     const equiposComunesQuery = `
+//       SELECT 
+//         e.tipo,
+//         e.marca,
+//         e.modelo,
+//         COUNT(*) AS cantidad
+//       FROM equipo e
+//       INNER JOIN ingreso i ON i.equipo_id = e.id
+//       WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
+//         AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2
+//       GROUP BY e.tipo, e.marca, e.modelo
+//       ORDER BY cantidad DESC
+//       LIMIT 10;
+//     `;
+//     const { rows: equiposComunes } = await pool.query(equiposComunesQuery, [mes, year]);
+
+//     res.json({
+//       mes,
+//       anio: year,
+//       resumen_general: {
+//         costo_total: Number(totalesMes.costo_total),
+//         total_facturado: Number(totalesMes.total_facturado),
+//         balance_total: Number(totalesMes.balance_total)
+//       },
+//       trabajos_mes: trabajosMes,
+//       clientes_frecuentes: clientesFrecuentes,
+//       reparaciones_comunes: reparacionesComunes,
+//       equipos_comunes: equiposComunes
+//     });
+//   } catch (error) {
+//     console.error('Error en getEstadisticasPorMes:', error.message);
+//     res.status(500).json({ error: 'Error obteniendo estadísticas por mes' });
+//   }
+// };
+
 export const getEstadisticasPorMes = async (req, res) => {
   try {
     const { mes, anio } = req.query;
@@ -172,114 +288,27 @@ export const getEstadisticasPorMes = async (req, res) => {
       return res.status(400).json({ error: 'Debe proporcionar el parámetro "mes" (1-12)' });
     }
 
-    const year = anio || new Date().getFullYear();
+    const year = anio ? Number(anio) : new Date().getFullYear();
 
-    // 1️⃣ Trabajos realizados en el mes (detalle con balances)
-    const trabajosMesQuery = `
-      SELECT 
-        c.id AS cliente_id,
-        c.nombre AS cliente_nombre,
-        c.apellido AS cliente_apellido,
-        e.id AS equipo_id,
-        e.tipo,
-        e.marca,
-        e.modelo,
-        COALESCE(SUM(p.costo), 0) AS costo_total,
-        COALESCE(SUM(p.total), 0) AS total_facturado,
-        (COALESCE(SUM(p.total), 0) - COALESCE(SUM(p.costo), 0)) AS balance_final
-      FROM ingreso i
-      INNER JOIN equipo e ON i.equipo_id = e.id
-      INNER JOIN cliente c ON e.cliente_id = c.id
-      LEFT JOIN presupuesto p ON p.ingreso_id = i.id
-      WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
-        AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2
-      GROUP BY c.id, e.id
-      ORDER BY balance_final DESC;
-    `;
-    const { rows: trabajosMes } = await pool.query(trabajosMesQuery, [mes, year]);
-
-    // 2️⃣ Totales acumulados del mes (resumen general)
-    const totalesMesQuery = `
-      SELECT 
-        COALESCE(SUM(p.costo), 0) AS costo_total,
-        COALESCE(SUM(p.total), 0) AS total_facturado,
-        (COALESCE(SUM(p.total), 0) - COALESCE(SUM(p.costo), 0)) AS balance_total
-      FROM ingreso i
-      LEFT JOIN presupuesto p ON p.ingreso_id = i.id
-      WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
-        AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2;
-    `;
-    const { rows: [totalesMes] } = await pool.query(totalesMesQuery, [mes, year]);
-
-    // 3️⃣ Clientes frecuentes
-    const clientesFrecuentesQuery = `
-      SELECT 
-        c.id AS cliente_id,
-        c.nombre,
-        c.apellido,
-        COUNT(e.id) AS equipos_ingresados
-      FROM cliente c
-      INNER JOIN equipo e ON e.cliente_id = c.id
-      INNER JOIN ingreso i ON i.equipo_id = e.id
-      WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
-        AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2
-      GROUP BY c.id
-      ORDER BY equipos_ingresados DESC
-      LIMIT 10;
-    `;
-    const { rows: clientesFrecuentes } = await pool.query(clientesFrecuentesQuery, [mes, year]);
-
-    // 4️⃣ Reparaciones comunes
-    const reparacionesComunesQuery = `
-      SELECT 
-        e.problema,
-        COUNT(*) AS cantidad
-      FROM equipo e
-      INNER JOIN ingreso i ON i.equipo_id = e.id
-      WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
-        AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2
-      GROUP BY e.problema
-      ORDER BY cantidad DESC
-      LIMIT 10;
-    `;
-    const { rows: reparacionesComunes } = await pool.query(reparacionesComunesQuery, [mes, year]);
-
-    // 5️⃣ Equipos más comunes
-    const equiposComunesQuery = `
-      SELECT 
-        e.tipo,
-        e.marca,
-        e.modelo,
-        COUNT(*) AS cantidad
-      FROM equipo e
-      INNER JOIN ingreso i ON i.equipo_id = e.id
-      WHERE EXTRACT(MONTH FROM i.fecha_ingreso) = $1
-        AND EXTRACT(YEAR FROM i.fecha_ingreso) = $2
-      GROUP BY e.tipo, e.marca, e.modelo
-      ORDER BY cantidad DESC
-      LIMIT 10;
-    `;
-    const { rows: equiposComunes } = await pool.query(equiposComunesQuery, [mes, year]);
-
-    res.json({
-      mes,
-      anio: year,
-      resumen_general: {
-        costo_total: Number(totalesMes.costo_total),
-        total_facturado: Number(totalesMes.total_facturado),
-        balance_total: Number(totalesMes.balance_total)
-      },
-      trabajos_mes: trabajosMes,
-      clientes_frecuentes: clientesFrecuentes,
-      reparaciones_comunes: reparacionesComunes,
-      equipos_comunes: equiposComunes
+    // Llamada RPC: fijate bien los nombres de parámetros en la definición: _mes, _anio
+    const { data, error } = await supabase.rpc('get_estadisticas_por_mes', {
+      _mes: Number(mes),
+      _anio: Number(year)
     });
-  } catch (error) {
-    console.error('Error en getEstadisticasPorMes:', error.message);
-    res.status(500).json({ error: 'Error obteniendo estadísticas por mes' });
+
+    if (error) {
+      console.error('Error en get_estadisticas_por_mes:', error);
+      return res.status(500).json({ error: error.message || 'Error en RPC' });
+    }
+
+    // data es el jsonb que retornó la función
+    // Lo devolvemos tal cual (manteniendo la misma estructura que tu controlador original)
+    return res.json(data);
+  } catch (err) {
+    console.error('Error en getEstadisticasPorMes:', err);
+    return res.status(500).json({ error: 'Error obteniendo estadísticas por mes' });
   }
 };
-
 
 //VENTAS
 
@@ -308,6 +337,88 @@ export const getResumenVentasPorPeriodo = async (req, res) => {
 };
 
 // ✅ Resumen de ventas por mes específico o todos -- TRABAJANDO ESTE
+// export const getResumenVentasPorMes = async (req, res) => {
+//   const { mes, anio } = req.query;
+
+//   if (!mes || !anio) {
+//     return res.status(400).json({
+//       success: false,
+//       error: "Debes proporcionar 'mes' y 'anio' en el cuerpo de la petición"
+//     });
+//   }
+
+//   try {
+//     const query = `
+//       SELECT
+//         v.id AS venta_id,
+//         v.fecha,
+//         c.id AS cliente_id,
+//         c.nombre AS nombre_cliente,
+//         p.id AS producto_id,
+//         p.nombre AS nombre_producto,
+//         dv.cantidad,
+//         dv.precio_unitario
+//       FROM venta v
+//       JOIN cliente c ON c.id = v.cliente_id
+//       JOIN detalle_venta dv ON dv.venta_id = v.id
+//       JOIN producto p ON p.id = dv.producto_id
+//       WHERE
+//         EXTRACT(YEAR FROM v.fecha) = $1
+//         AND EXTRACT(MONTH FROM v.fecha) = $2
+//       ORDER BY v.fecha ASC
+//     `;
+
+//     const values = [anio, mes];
+//     const { rows } = await pool.query(query, values);
+
+//     const ventasMap = {};
+//     let total_ventas = 0;
+
+//     for (const row of rows) {
+//       if (!ventasMap[row.venta_id]) {
+//         ventasMap[row.venta_id] = {
+//           venta_id: row.venta_id,
+//           fecha: row.fecha,
+//           cliente_id: row.cliente_id,
+//           nombre_cliente: row.nombre_cliente,
+//           productos: [],
+//           total: 0
+//         };
+//       }
+
+//       const subtotal = Number(row.cantidad) * Number(row.precio_unitario);
+//       ventasMap[row.venta_id].productos.push({
+//         producto_id: row.producto_id,
+//         nombre_producto: row.nombre_producto,
+//         cantidad: Number(row.cantidad),
+//         precio_unitario: Number(row.precio_unitario),
+//         subtotal
+//       });
+
+//       ventasMap[row.venta_id].total += subtotal;
+//     }
+
+//     const ventas = Object.values(ventasMap);
+//     total_ventas = ventas.reduce((sum, v) => sum + v.total, 0);
+
+//     res.status(200).json({
+//       success: true,
+//       data: {
+//         total_ventas,
+//         ventas
+//       }
+//     });
+//   } catch (error) {
+//     console.error("Error al obtener las ventas del mes:", error.message);
+//     res.status(500).json({
+//       success: false,
+//       error: "Error al obtener las ventas del mes"
+//     });
+//   }
+// };
+
+
+
 export const getResumenVentasPorMes = async (req, res) => {
   const { mes, anio } = req.query;
 
@@ -319,33 +430,17 @@ export const getResumenVentasPorMes = async (req, res) => {
   }
 
   try {
-    const query = `
-      SELECT
-        v.id AS venta_id,
-        v.fecha,
-        c.id AS cliente_id,
-        c.nombre AS nombre_cliente,
-        p.id AS producto_id,
-        p.nombre AS nombre_producto,
-        dv.cantidad,
-        dv.precio_unitario
-      FROM venta v
-      JOIN cliente c ON c.id = v.cliente_id
-      JOIN detalle_venta dv ON dv.venta_id = v.id
-      JOIN producto p ON p.id = dv.producto_id
-      WHERE
-        EXTRACT(YEAR FROM v.fecha) = $1
-        AND EXTRACT(MONTH FROM v.fecha) = $2
-      ORDER BY v.fecha ASC
-    `;
+    // llamar RPC: atención a los nombres de parámetro: _anio, _mes
+    const { data: rows, error } = await supabase
+      .rpc('get_resumen_ventas_por_mes', { _anio: Number(anio), _mes: Number(mes) });
 
-    const values = [anio, mes];
-    const { rows } = await pool.query(query, values);
+    if (error) throw error;
 
+    // Reconstruir exactamente la misma estructura que tu versión con pool.query
     const ventasMap = {};
     let total_ventas = 0;
 
-    for (const row of rows) {
+    for (const row of rows || []) {
       if (!ventasMap[row.venta_id]) {
         ventasMap[row.venta_id] = {
           venta_id: row.venta_id,
@@ -372,7 +467,7 @@ export const getResumenVentasPorMes = async (req, res) => {
     const ventas = Object.values(ventasMap);
     total_ventas = ventas.reduce((sum, v) => sum + v.total, 0);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         total_ventas,
@@ -380,13 +475,15 @@ export const getResumenVentasPorMes = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error("Error al obtener las ventas del mes:", error.message);
-    res.status(500).json({
+    console.error("Error al obtener las ventas del mes:", error?.message || error);
+    return res.status(500).json({
       success: false,
       error: "Error al obtener las ventas del mes"
     });
   }
 };
+
+
 
 
 // ✅ Resumen de saldos de clientes
