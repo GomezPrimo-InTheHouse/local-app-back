@@ -34,12 +34,13 @@
 // });
 
 // src/app.js
+// src/app.js
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dns from 'dns';
 
-// Prefiere IPv4 en el proceso padre
+// Preferir IPv4 también en el proceso padre (extra, además del NODE_OPTIONS)
 dns.setDefaultResultOrder('ipv4first');
 
 const __filename = fileURLToPath(import.meta.url);
@@ -58,11 +59,11 @@ services.forEach(service => {
     env: {
       ...process.env,
       PORT: service.port,
-      // Propaga la preferencia IPv4 a los procesos hijos
+      // Asegura que cada hijo también reciba la preferencia por IPv4
       NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --dns-result-order=ipv4first`,
     },
     stdio: 'inherit',
-    shell: true, // práctico para macOS/Windows
+    shell: true, // práctico en macOS/Windows
   });
 
   child.on('close', code => {
@@ -73,4 +74,3 @@ services.forEach(service => {
     console.error(`❌ Error al iniciar ${service.name}:`, err);
   });
 });
-

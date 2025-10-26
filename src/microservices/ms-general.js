@@ -139,40 +139,44 @@
 
 
 // src/microservices/ms-general.js
-import dns from 'dns';
-dns.setDefaultResultOrder('ipv4first'); // cada hijo fuerza IPv4
+// src/microservices/ms-general.js
 
-import 'dotenv/config';                 // útil en dev local; en Render toma Environment
+// ⚠️ IMPORTANTE: no importes nada que toque DB antes de setear IPv4.
+import dns from 'dns';
+dns.setDefaultResultOrder('ipv4first'); // este proceso hijo preferirá IPv4
+
+import 'dotenv/config';                 // en Render usa Environment
 import express, { json } from 'express';
 import morgan from 'morgan';
 
-import ClienteRoute     from '../routes/cliente.route.js';
-import EquipoRoute      from '../routes/equipo.route.js';
-import PresupuestoRoute from '../routes/presupuesto.route.js';
-import IngresoRoute     from '../routes/ingreso.route.js';
-import AuthRoute        from '../routes/auth/auth.routes.js';
-import EstadoRoute      from '../routes/estado.route.js';
-import HistorialRoute   from '../routes/historial.route.js';
+// Rutas (estas no deben tocar DB en top-level; la conexión se maneja desde el módulo de DB)
+import ClienteRoute      from '../routes/cliente.route.js';
+import EquipoRoute       from '../routes/equipo.route.js';
+import PresupuestoRoute  from '../routes/presupuesto.route.js';
+import IngresoRoute      from '../routes/ingreso.route.js';
+import AuthRoute         from '../routes/auth/auth.routes.js';
+import EstadoRoute       from '../routes/estado.route.js';
+import HistorialRoute    from '../routes/historial.route.js';
 import EstadisticasRoute from '../routes/estadisticas.routes.js';
-import ProductoRoute    from '../routes/producto.route.js';
-import VentaRoute       from '../routes/venta.route.js';
+import ProductoRoute     from '../routes/producto.route.js';
+import VentaRoute        from '../routes/venta.route.js';
 
-import { pingDb, testDbConnection } from '../config/supabaseAuthModule.js';
+import { testDbConnection, pingDb } from '../config/supabaseAuthModule.js';
 
 const app = express();
 const PORT = process.env.PORT || 7001;
 
-// ⚠️ Actualizá la URL de ngrok vigente si cambia
+// === CORS estricto ===
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:4173',
   'https://local-app-front.vercel.app',
-  /\.vercel\.app$/, // permite cualquier subdominio vercel.app
+  /\.vercel\.app$/,
   'https://lanita-buckshee-enharmonically.ngrok-free.dev',
   'https://lanita-buckshee-enharmonically.ngrok-free.app',
 ];
 
-// Armo Set con hosts explícitos
+// Derivo hosts explícitos a un Set
 const allowedHosts = new Set(
   allowedOrigins
     .filter(o => typeof o === 'string')
@@ -183,13 +187,12 @@ const allowedHosts = new Set(
 );
 
 function isHostAllowed(origin) {
-  if (!origin) return true; // permitir curl/healthchecks sin Origin
+  if (!origin) return true;
   try {
     const { host } = new URL(origin);
-
-    if (allowedHosts.has(host)) return true;           // 1) hosts explícitos
-    if (host.endsWith('.vercel.app')) return true;     // 2) comodín vercel
-    for (const o of allowedOrigins) {                  // 3) regex configuradas
+    if (allowedHosts.has(host)) return true;
+    if (host.endsWith('.vercel.app')) return true;
+    for (const o of allowedOrigins) {
       if (o instanceof RegExp && o.test(origin)) return true;
     }
     return false;
@@ -198,7 +201,6 @@ function isHostAllowed(origin) {
   }
 }
 
-// CORS estricto con reflexión del Origin permitido
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowed = isHostAllowed(origin);
@@ -208,7 +210,6 @@ app.use((req, res, next) => {
   if (origin && allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
-  // Si no usás cookies/sesión, puede ser "false"
   res.setHeader('Access-Control-Allow-Credentials', 'false');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
 
@@ -230,14 +231,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Proxy trust si estás detrás de ngrok/proxy
+// Proxy trust si tenés ngrok/proxy/CDN
 app.set('trust proxy', 1);
 
 // Middlewares
 app.use(morgan('dev'));
 app.use(json());
 
-// Rutas de negocio
+// Rutas
 app.use('/equipo',       EquipoRoute);
 app.use('/cliente',      ClienteRoute);
 app.use('/presupuesto',  PresupuestoRoute);
@@ -249,7 +250,7 @@ app.use('/estadisticas', EstadisticasRoute);
 app.use('/producto',     ProductoRoute);
 app.use('/venta',        VentaRoute);
 
-// Health básico
+// Health básicos
 app.get('/health', (_req, res) => {
   res.json({
     service: 'Microservicio gral',
@@ -258,7 +259,6 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Health de DB para Render
 app.get('/db/ready', async (_req, res) => {
   try {
     const ok = await pingDb();
@@ -269,9 +269,9 @@ app.get('/db/ready', async (_req, res) => {
   }
 });
 
-// Inicio
+// Start
 app.listen(PORT, async () => {
   console.log(`Microservicio gral corriendo en http://localhost:${PORT}`);
-  // Test de DB al arrancar (log claro y único)
+  // Hacemos el test de DB al arrancar (ya forzamos IPv4 y resolución manual en el módulo)
   await testDbConnection();
 });

@@ -34,38 +34,81 @@
 
 
 // src/config/db.js
-import 'dotenv/config'; // en dev local carga .env; en Render usa Environment
+// src/config/supabaseAuthModule.js
+// src/config/supabaseAuthModule.js
+// src/config/supabaseAuthModule.js
+// src/config/supabaseAuthModule.js
+import 'dotenv/config';
 import pkg from 'pg';
+import { resolve4 } from 'dns/promises';
+
 const { Pool } = pkg;
 
-// Log seguro de la URL (oculta password)
 const redact = (url) =>
   url ? url.replace(/\/\/([^:]+):([^@]+)@/, '//$1:****@') : '(sin DATABASE_URL)';
 
-function warnIfNotPooler(dbUrl) {
-  if (!dbUrl) return;
-  try {
-    const u = new URL(dbUrl);
-    const host = u.hostname;
-    const port = u.port || '5432';
-    if (!host.includes('pooler.supabase.com') || port !== '6543') {
-      console.warn(
-        `⚠️  DATABASE_URL no parece usar el Pooler (host=${host}, port=${port}). ` +
-        `Usá aws-1-us-east-2.pooler.supabase.com:6543 con ?sslmode=require`
-      );
-    }
-  } catch {
-    // no-op
-  }
+function parseDbUrl(dbUrl) {
+  if (!dbUrl) throw new Error('DATABASE_URL no definida');
+  const u = new URL(dbUrl);
+  return {
+    proto: u.protocol, // "postgresql:"
+    user: decodeURIComponent(u.username),
+    pass: decodeURIComponent(u.password),
+    host: u.hostname,                          // hostname original (para SNI)
+    port: u.port ? Number(u.port) : 5432,
+    db: u.pathname?.replace(/^\//, '') || 'postgres',
+    // IMPORTANTE: NO usar u.search acá (evitamos sslmode desde query)
+  };
 }
 
+async function buildConnectionTarget(dbUrl) {
+  console.log('DATABASE_URL:', redact(dbUrl));
+  const cfg = parseDbUrl(dbUrl);
+
+  // Si estás en producción, intentamos IPv4 para evitar AAAA; en local, usamos hostname
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  let ipv4 = null;
+  if (isProduction) {
+    try {
+      const A = await resolve4(cfg.host);
+      if (Array.isArray(A) && A.length > 0) {
+        ipv4 = A[0];
+        console.log(`🔎 ${cfg.host} → IPv4 ${ipv4}`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ No se pudo resolver A(IPv4) de ${cfg.host}:`, e?.code || e?.message || e);
+    }
+  }
+
+  // Construimos connectionString SIN parámetros ?sslmode=… (lo forzamos vía objeto ssl)
+  const hostForConn = isProduction && ipv4 ? ipv4 : cfg.host;
+  const connectionString =
+    `${cfg.proto}//${encodeURIComponent(cfg.user)}:${encodeURIComponent(cfg.pass)}@` +
+    `${hostForConn}:${cfg.port}/${cfg.db}`;
+
+  // TLS: rechazamos verificación para evitar "self-signed", y SIEMPRE enviamos SNI = hostname real
+  const ssl = {
+    rejectUnauthorized: false,
+    servername: cfg.host,
+  };
+
+  if (isProduction && ipv4) {
+    console.log(`🔒 Forzando conexión por IPv4: ${hostForConn}:${cfg.port} (SNI=${cfg.host})`);
+  } else {
+    console.log(`🔒 Conexión por hostname: ${cfg.host}:${cfg.port} (SNI=${cfg.host})`);
+  }
+
+  return { connectionString, ssl };
+}
+
+// ——— mantiene EXACTAMENTE el mismo nombre de export ———
 const DB_URL = process.env.DATABASE_URL;
-console.log('DATABASE_URL:', redact(DB_URL));
-warnIfNotPooler(DB_URL);
+const { connectionString, ssl } = await buildConnectionTarget(DB_URL);
 
 export const pool = new Pool({
-  connectionString: DB_URL,                 // Debe apuntar al pooler:6543
-  ssl: { rejectUnauthorized: false },       // o usa ?sslmode=require en la URL
+  connectionString,
+  ssl, // <- usamos el objeto ssl, no la query
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
@@ -79,7 +122,7 @@ pool.on('error', (err) => {
   console.error('❌ Error en Pool PG:', err);
 });
 
-// Ping rápido
+// Helpers (no cambian nombres en otros módulos)
 export async function pingDb() {
   const client = await pool.connect();
   try {
@@ -90,7 +133,6 @@ export async function pingDb() {
   }
 }
 
-// Test de conexión con log claro
 export async function testDbConnection() {
   try {
     const client = await pool.connect();
@@ -101,3 +143,4 @@ export async function testDbConnection() {
     console.error('❌ Error al conectar a la base de datos Supabase:', err);
   }
 }
+
