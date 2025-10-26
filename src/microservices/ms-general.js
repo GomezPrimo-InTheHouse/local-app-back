@@ -23,38 +23,85 @@ const PORT = process.env.PORT || 7001;
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:4173",
-  "https://tuapp.vercel.app",
+  "https://local-app-front.vercel.app",
   /\.vercel\.app$/,
   "https://lanita-buckshee-enharmonically.ngrok-free.dev",
   "https://lanita-buckshee-enharmonically.ngrok-free.app",
 ];
 
+function isHostAllowed(origin) {
+  if (!origin) return true; // permitir curl/healthchecks sin Origin
+  try {
+    const { host } = new URL(origin); // ej. "local-app-front.vercel.app"
+    if (allowedHosts.has(host)) return true;
+    // permite cualquier *.vercel.app
+    if (host.endsWith(".vercel.app")) return true;
+    return false;
+  } catch {
+    // si el header Origin viene raro, mejor negar
+    return false;
+  }
+}
+
 // === CORS HARD MODE (PRIMERO) ===
+// app.use((req, res, next) => {
+//   const origin = req.headers.origin;
+//   const isAllowed = !origin
+//     ? true
+//     : allowedOrigins.some(o => (o instanceof RegExp ? o.test(origin) : o === origin));
+
+//   if (isAllowed && origin) {
+//     res.header("Access-Control-Allow-Origin", origin);
+//     res.header("Vary", "Origin");
+//   }
+//   res.header("Access-Control-Allow-Credentials", "true");
+//   res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+
+//   // reflejar exactamente lo que pide el preflight
+//   const reqHeaders = req.headers["access-control-request-headers"];
+//   res.header(
+//     "Access-Control-Allow-Headers",
+//     reqHeaders || "Content-Type, Authorization, ngrok-skip-browser-warning"
+//   );
+
+//   if (req.method === "OPTIONS") {
+//     if (!isAllowed && origin) return res.sendStatus(403);
+//     return res.sendStatus(204);
+//   }
+//   return next();
+// });
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const isAllowed = !origin
-    ? true
-    : allowedOrigins.some(o => (o instanceof RegExp ? o.test(origin) : o === origin));
+  const allowed = isHostAllowed(origin);
 
-  if (isAllowed && origin) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Vary", "Origin");
+  // Siempre variar por Origin para caches
+  res.setHeader("Vary", "Origin");
+
+  if (origin && allowed) {
+    res.setHeader("Access-Control-Allow-Origin", origin); // debe ser exacto si credentials=true
   }
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  // si usás JWT via header, credentials puede ser false. Si algún día usás cookies, ponelo true.
+  res.setHeader("Access-Control-Allow-Credentials", "false");
 
-  // reflejar exactamente lo que pide el preflight
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+
+  // reflejar lo que pide el preflight o set por defecto
   const reqHeaders = req.headers["access-control-request-headers"];
-  res.header(
+  res.setHeader(
     "Access-Control-Allow-Headers",
     reqHeaders || "Content-Type, Authorization, ngrok-skip-browser-warning"
   );
 
   if (req.method === "OPTIONS") {
-    if (!isAllowed && origin) return res.sendStatus(403);
+    // responder SIEMPRE el preflight antes que cualquier otro middleware
+    if (origin && !allowed) return res.sendStatus(403);
     return res.sendStatus(204);
   }
-  return next();
+
+  // si el origin no está permitido y existe, cortamos acá
+  if (origin && !allowed) return res.status(403).json({ error: "CORS: origin no permitido" });
+
+  next();
 });
 
 // (si usás cookies/sesión detrás de ngrok/proxy)
