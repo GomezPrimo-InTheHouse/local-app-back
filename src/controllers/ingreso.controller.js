@@ -1,5 +1,5 @@
 // src/controllers/ingreso.controller.js
-import  {pool}  from '../config/db.js';
+// import  {pool}  from '../config/db.js';
 import { supabase } from '../config/supabase.js';
 // Crear ingreso
 // const createIngreso = async (req, res) => {

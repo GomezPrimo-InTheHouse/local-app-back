@@ -1,5 +1,6 @@
 // src/utils/historial/registrarHistorial.js
-import { pool } from '../../config/db.js';
+// import { pool } from '../../config/db.js';
+import { pool } from '../../config/supabaseAuthModule.js';
 
 /**
  * Registra un evento de historial de login.

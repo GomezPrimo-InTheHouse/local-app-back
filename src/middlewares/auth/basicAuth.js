@@ -120,7 +120,7 @@
 
 // export default { basicAuth };
 
-import { pool } from '../../config/db.js';
+import { pool } from '../../config/supabaseAuthModule.js';
 import bcrypt from 'bcrypt';
 import { registrarHistorial } from '../../utils/historial/registrarHistorial.js';
 

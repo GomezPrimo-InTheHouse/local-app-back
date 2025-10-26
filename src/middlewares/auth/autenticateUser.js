@@ -1,7 +1,7 @@
 
 
 import bcrypt from 'bcrypt';
-import {pool} from '../../config/db.js';
+import { pool } from '../../config/supabaseAuthModule.js';
 import { registrarHistorial } from '../../utils/historial/registrarHistorial.js';
 
 const authenticateUser = async (req, res, next) => {

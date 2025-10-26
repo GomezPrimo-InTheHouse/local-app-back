@@ -4,7 +4,8 @@
 // config/supabase.js
 
 import { createClient } from '@supabase/supabase-js';
-
+import dotenv from 'dotenv';
+dotenv.config();
 
 // estas claves las copiás de tu dashboard de supabase
 const SUPABASE_URL = process.env.SUPABASE_URL 
@@ -20,6 +21,7 @@ const testConnection = async () => {
     console.error("❌ Error al conectar a Supabase:", error.message);
   } else {
     console.log("✅ Conectado a Supabase");
+    
   }
 };
 

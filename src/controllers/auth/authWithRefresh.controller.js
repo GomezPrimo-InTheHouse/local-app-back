@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken';
 const { sign, verify } = jwt;
 
-import {pool} from '../../config/db.js';
+// import {pool} from '../../config/db.js';
+import { pool } from '../../config/supabaseAuthModule.js';
+
 
 import dotenv from 'dotenv';
 dotenv.config();

@@ -1,115 +1,223 @@
-import  {pool}  from '../config/db.js';
+
 
 import { supabase } from '../config/supabase.js';
+import axios from 'axios';
+import { pool } from '../config/supabaseAuthModule.js';
 
 // export const createEquipo = async (req, res) => {
-//   const client = await pool.connect();
 //   try {
 //     const { tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso } = req.body;
 
-//     if(!tipo || !marca || !modelo || !cliente_id || !fecha_ingreso || !problema){
-//       return res.status(400).json({ error: "Campos obligatorios: tipo, marca, modelo, cliente_id, fecha_ingreso, problema, password" });
+//     if (!tipo || !marca || !modelo || !cliente_id || !fecha_ingreso || !problema) {
+//       return res.status(400).json({
+//         error: "Campos obligatorios: tipo, marca, modelo, cliente_id, fecha_ingreso, problema"
+//       });
 //     }
 
-//     const query = `
-//       INSERT INTO equipo (tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso)
-//       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-//       RETURNING *;
-//     `;
+//     const { data, error } = await supabase
+//       .rpc('crear_equipo_y_ingreso', {
+//         _tipo: tipo,
+//         _marca: marca,
+//         _modelo: modelo,
+//         _problema: problema,
+//         _password: password,
+//         _patron: patron,
+//         _cliente_id: cliente_id,
+//         _estado_id: estado_id,
+//         _fecha_ingreso: fecha_ingreso
+//       });
 
-//     const { rows } = await pool.query(query, [tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso]);
-//     const nuevoEquipo = rows[0];
+//     if (error) throw error;
 
-//     // 2️⃣ Crear ingreso asociado automáticamente
-//     const insertIngresoQuery = `
-//       INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado_id)
-//       VALUES ($1, NOW(), NULL, $2)
-//       RETURNING *;
-//     `;
-//     const { rows: ingresoRows } = await client.query(insertIngresoQuery, [nuevoEquipo.id, estado_id]);
-//     const nuevoIngreso = ingresoRows[0];
+//     // aqui quisiera enviar mensaje por twilio avisando de nuevo ingreso
+//     // ruta router.post('/enviar-mensaje', enviarMensaje);
+//     //puerto process.env.MS2PORT
 
-//     await client.query('COMMIT');
+//     // const cliente = await supabase
+//     //   .from('cliente')
+//     //   .select('telefono')
+//     //   .eq('id', cliente_id)
+//     //   .single();
 
-//     // 3️⃣ Devolver la respuesta estructurada
-//     res.status(201).json({
-//       equipo: nuevoEquipo,
-//       ingreso: nuevoIngreso
-//     });
+//     // const enviarMensaje = async () => {
+//     //   const fetch = await import('node-fetch');
+//     //   const response = await fetch.default(`http://localhost:${process.env.MS2PORT}/enviar-mensaje`, {
+//     //     method: 'POST',
+//     //     headers: { 'Content-Type': 'application/json' },
+//     //     body: JSON.stringify({
+//     //       to: cliente.data.telefono,
+//     //       message: `Hola! Su equipo ha sido ingresado correctamente al taller. ID de equipo: ${data.equipo_id}. Gracias por confiar en nosotros!`
+//     //     })
+//     //   });
+//     // } 
 
-//     res.status(201).json(rows[0]);
+//     res.status(201).json(data);
 
 //   } catch (err) {
 //     res.status(500).json({ error: err.message });
 //   }
 // };
 
-// Obtener todos los equipos
-// este controlador se llama para el template de EquipoPage.jsx
-// export const getEquipos = async (req, res) => {
-    
-//   try {
-//     const { rows } = await pool.query(
-//       `
-//       SELECT 
-//       e.id, e.tipo, e.marca, e.modelo, e.problema, e.password, e.patron,
-//       e.fecha_ingreso, e.estado_id, e.cliente_id,
-//       c.nombre AS cliente_nombre, c.apellido AS cliente_apellido
-//       FROM equipo e
-//       JOIN cliente c ON e.cliente_id = c.id
-//       ORDER BY e.fecha_ingreso DESC
-//       `
-//       );
-//     res.status(200).json(rows);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
-
-
-
-
-// controllers/equipoController.js
-
-
-
-
-
-export const createEquipo = async (req, res) => {
-  try {
-    const { tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso } = req.body;
-
-    if (!tipo || !marca || !modelo || !cliente_id || !fecha_ingreso || !problema) {
-      return res.status(400).json({
-        error: "Campos obligatorios: tipo, marca, modelo, cliente_id, fecha_ingreso, problema"
-      });
-    }
-
-    const { data, error } = await supabase
-      .rpc('crear_equipo_y_ingreso', {
-        _tipo: tipo,
-        _marca: marca,
-        _modelo: modelo,
-        _problema: problema,
-        _password: password,
-        _patron: patron,
-        _cliente_id: cliente_id,
-        _estado_id: estado_id,
-        _fecha_ingreso: fecha_ingreso
-      });
-
-    if (error) throw error;
-
-    res.status(201).json(data);
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
 //create equipo con supabase y una funcion rpc que cree el equipo y el ingreso asociado
 
 
 // Obtener todos los equipos con supabase
+
+
+// controllers/equipo.controller.js
+
+// controllers/equipo.controller.js
+
+
+/**
+ * POST /equipo
+ * Crea equipo + ingreso (mismo controller y transacción), y luego intenta enviar WhatsApp.
+ * Equivale funcionalmente al RPC crear_equipo_y_ingreso.
+ */
+export const createEquipo = async (req, res) => {
+  const {
+    tipo,
+    marca,
+    modelo,
+    password = null,
+    problema = null,
+    fecha_ingreso = null,   // date (YYYY-MM-DD) para equipo.fecha_ingreso
+    patron = null,
+    cliente_id,
+    estado_id,
+  } = req.body || {};
+
+  // Validación mínima
+  if (
+    !tipo || !marca || !modelo ||
+    !Number.isInteger(Number(cliente_id)) ||
+    !Number.isInteger(Number(estado_id))
+  ) {
+    return res.status(400).json({
+      success: false,
+      error:
+        "Campos requeridos: tipo, marca, modelo, cliente_id (int) y estado_id (int).",
+    });
+  }
+
+  // Normalización
+  const v_tipo      = String(tipo).trim();
+  const v_marca     = String(marca).trim();
+  const v_modelo    = String(modelo).trim();
+  const v_password  = password == null ? null : String(password).trim();
+  const v_problema  = problema == null ? null : String(problema).trim();
+  const v_patron    = patron == null ? null : String(patron).trim();
+  const v_clienteId = Number(cliente_id);
+  const v_estadoId  = Number(estado_id);
+  const v_fechaIngreso = fecha_ingreso ? String(fecha_ingreso) : null;
+
+  const client = await pool.connect();
+  try {
+    // ================== TRANSACCIÓN ==================
+    await client.query('BEGIN');
+
+    // 1) INSERT equipo (igual que el RPC: usa _fecha_ingreso para el campo date del equipo)
+    const insertEquipoSQL = `
+      INSERT INTO equipo
+        (tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso, created_at, updated_at)
+      VALUES
+        ($1::varchar, $2::varchar, $3::varchar, $4::text, $5::varchar, $6::varchar,
+         $7::int, $8::int, COALESCE($9::date, CURRENT_DATE), CURRENT_DATE, CURRENT_DATE)
+      RETURNING id, tipo, marca, modelo, problema, password, patron, cliente_id, estado_id, fecha_ingreso, created_at, updated_at
+    `;
+    const equipoParams = [
+      v_tipo, v_marca, v_modelo, v_problema, v_password, v_patron,
+      v_clienteId, v_estadoId, v_fechaIngreso
+    ];
+    const eqRes = await client.query(insertEquipoSQL, equipoParams);
+    const equipo = eqRes.rows[0];
+
+    // 2) INSERT ingreso asociado (usa ahora en zona horaria de Argentina)
+    // RPC: v_fecha_arg := now() at time zone 'America/Argentina/Buenos_Aires';
+    const insertIngresoSQL = `
+      INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado_id)
+      VALUES (
+        $1::int,
+        (now() at time zone 'America/Argentina/Buenos_Aires')::timestamp,
+        NULL,
+        $2::int
+      )
+      RETURNING id, equipo_id, fecha_ingreso, fecha_egreso, estado_id
+    `;
+    const ingParams = [equipo.id, v_estadoId];
+    const ingRes = await client.query(insertIngresoSQL, ingParams);
+    const ingreso = ingRes.rows[0];
+
+    // 3) COMMIT (equipo+ingreso listos, como el RPC)
+    await client.query('COMMIT');
+
+    // ================== ENVÍO DE MENSAJE (fuera de la transacción) ==================
+    // Obtener datos del cliente
+    const clienteRes = await pool.query(
+      `SELECT nombre, apellido, celular FROM cliente WHERE id = $1::int`,
+      [v_clienteId]
+    );
+    const cliente = clienteRes.rows[0];
+
+    if (!cliente) {
+      // Si no hay cliente, devolvemos igual equipo & ingreso (como haría el RPC)
+      return res.status(201).json({
+        success: true,
+        data: { equipo, ingreso },
+        message: 'Equipo e ingreso registrados. Cliente no encontrado para enviar mensaje.',
+      });
+    }
+
+    // Armar mensaje (número fijo, como pediste)
+    const numeroDestino = '+5493534275476';
+    const equipoDescripcion = `${v_tipo} ${v_marca} ${v_modelo}`;
+    const fechaEquipoAR = new Date(equipo.fecha_ingreso).toLocaleDateString('es-AR', {
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+
+    // Si tu ms-twilio acepta solo {numero, cliente, equipo}, mandamos eso:
+    const payloadMs = {
+      numero: numeroDestino,
+      cliente,
+      equipo: equipoDescripcion,
+      // Si ya implementaste "textoPersonalizado" en ms-twilio, podés enviar este campo:
+      // textoPersonalizado: `Hola ${cliente.nombre} ${cliente.apellido} ...`
+    };
+
+    try {
+      const twilioResponse = await axios.post(
+        'http://localhost:7002/twilio/enviar-mensaje', 
+        payloadMs
+      );
+
+      return res.status(201).json({
+        success: true,
+        data: { equipo, ingreso, mensaje: twilioResponse.data },
+        message: 'Equipo e ingreso registrados; mensaje enviado correctamente.',
+      });
+    } catch (twilioErr) {
+      console.error('⚠️ Error al enviar mensaje (Twilio):', twilioErr?.message || twilioErr);
+      return res.status(201).json({
+        success: true,
+        data: { equipo, ingreso },
+        warning: 'Equipo e ingreso registrados, pero no se pudo enviar el mensaje al cliente.',
+      });
+    }
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('❌ Error en createEquipo (SQL txn):', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Error al registrar equipo e ingreso',
+    });
+  } finally {
+    client.release();
+  }
+};
+
+
+
+
 export const getEquipos = async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -163,7 +271,7 @@ export const getEquipos = async (req, res) => {
 };
 
 
-// Obtener equipo por ID
+
 // export const getEquipoById = async (req, res) => {
 //   try {
 //     const { id } = req.params;
@@ -477,17 +585,7 @@ export const updateEquipo = async (req, res) => {
   }
 };
 
-// Eliminar equipo
-// export const deleteEquipo = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { rowCount } = await pool.query('DELETE FROM equipo WHERE id = $1', [id]);
-//     if (rowCount === 0) return res.status(404).json({ msg: 'Equipo no encontrado' });
-//     res.json({ msg: 'Equipo eliminado correctamente' });
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
+
 
 
 export const deleteEquipo = async (req, res) => {

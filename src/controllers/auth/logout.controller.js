@@ -1,4 +1,4 @@
-import {pool} from '../../config/db.js';
+import { pool } from '../../config/supabaseAuthModule.js';
 import registrarHistorial from '../../utils/historial/registrarHistorial.js';
 export const logout = async (req, res) => {
   const { email } = req.body;

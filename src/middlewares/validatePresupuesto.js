@@ -1,5 +1,5 @@
 // src/middlewares/validatePresupuesto.js
-import pool from '../config/db';
+import { pool } from '../../config/supabaseAuthModule.js';
 
 const validatePresupuesto = async (req, res, next) => {
   const { cliente_id, equipo_id } = req.body;

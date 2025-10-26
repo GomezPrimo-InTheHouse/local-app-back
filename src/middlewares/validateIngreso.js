@@ -1,5 +1,5 @@
 // src/middlewares/validateIngreso.js
-import pool from '../config/db';
+import { pool } from '../../config/supabaseAuthModule.js';
 
 export const validateIngreso = async (req, res, next) => {
   const { equipo_id } = req.body;

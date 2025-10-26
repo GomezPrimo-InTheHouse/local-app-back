@@ -1,5 +1,5 @@
 // controllers/auth.controller.js
-import {pool} from '../../config/db.js';
+import { pool } from '../../config/supabaseAuthModule.js';
 import { hash } from 'bcrypt';
 import { generarTotp, generarQRCodeTerminal, generarQRCodeDataURL } from '../../utils/auth/totp-util.js';
 

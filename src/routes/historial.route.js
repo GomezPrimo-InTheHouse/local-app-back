@@ -1,8 +1,12 @@
 import { Router } from 'express';
-import { getHistorialEquipo } from '../controllers/historial.controller.js';
+import { 
+    getHistorialCliente,
+    getHistorialClienteByClienteId
+ } from '../controllers/historial.controller.js';
 
 const router = Router();
 
-router.get('/equipo/:equipoId', getHistorialEquipo);
+router.get('/equipo/:equipoId', getHistorialCliente);
+router.get('/cliente/:clienteId', getHistorialClienteByClienteId);
 
 export default router;

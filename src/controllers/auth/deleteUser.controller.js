@@ -1,6 +1,8 @@
 
 // controllers/userController.js
-import {pool} from '../../config/db.js';
+// import {pool} from '../../config/db.js';
+import { pool } from '../../config/supabaseAuthModule.js';
+
 
 export const darDeBajaUsuario = async (req, res) => {
   

@@ -21,8 +21,9 @@ const { numero, cliente, equipo } = req.body;
       1. Garantía: Ofrecemos garantía en las reparaciones realizadas.
       2. Privacidad: Respetamos la confidencialidad de los datos en su equipo.
       3. Plazos: Nos esforzamos por cumplir con los tiempos acordados para la entrega.
-      4. Retiro: El equipo debe ser retirado en el plazo máximo de 60 días tras la reparación, caso contrario queda en estado 'abandonado'.
-      5. Ubicación: Bolivar 1313 - Atención de Lunes a Sábados (consultar horarios).
+      4. Retiro: El equipo debe ser retirado en el plazo máximo de 60 días tras la reparación o si se el presupuesto es rechazado, caso contrario queda en estado 'abandonado'.
+      
+      5. Info: Bolivar 1313 - Villa María - Atención de Lunes a Sábados (consultar horarios).
       `
           });
 

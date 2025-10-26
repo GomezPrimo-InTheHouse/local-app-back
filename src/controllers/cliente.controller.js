@@ -1,5 +1,7 @@
-import  { pool }  from '../config/db.js';
+// import  { pool }  from '../config/db.js';
+
 import { supabase } from '../config/supabase.js';
+
 // Obtener todos los clientes
 // export const getClientes = async (req, res) => {
 //   try {
@@ -155,8 +157,11 @@ export const createCliente = async (req, res) => {
     // rpc devuelve rows (TABLE) -> puede venir como array
     const cliente = Array.isArray(data) ? data[0] : data;
     res.status(200).json(cliente);
+
   } catch (err) {
+
     res.status(500).json({ error: err.message || err });
+    
   }
 };
 

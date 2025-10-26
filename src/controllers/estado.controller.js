@@ -1,4 +1,4 @@
-import { pool } from '../config/db.js';
+// import { pool } from '../config/db.js';
 import { supabase } from '../config/supabase.js';
 
 // export const getEstados = async (req, res) => {

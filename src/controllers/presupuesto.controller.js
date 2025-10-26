@@ -1,5 +1,5 @@
 // src/controllers/presupuesto.controller.js
-import  {pool}  from '../config/db.js';
+// import  {pool}  from '../config/db.js';
 
 import { supabase} from '../config/supabase.js';
 
