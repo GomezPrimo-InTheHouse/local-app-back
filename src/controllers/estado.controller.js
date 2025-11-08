@@ -151,13 +151,13 @@ export const createEstado = async (req, res) => {
 
     if (error) {
       console.error('Error creando estado (Supabase):', error);
-      return res.status(500).json({ error: 'Error creando estado' });
+      return res.status(500).json({ error: 'Error creando estado', msj: error.message });
     }
 
     return res.status(201).json(data);
   } catch (err) {
     console.error('Error creando estado:', err);
-    return res.status(500).json({ error: 'Error creando estado' });
+    return res.status(500).json({ error: 'Error creando estado', msj: err.message});
   }
 };
 

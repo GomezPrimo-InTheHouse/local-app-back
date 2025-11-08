@@ -41,7 +41,7 @@ import { fileURLToPath } from 'url';
 import dns from 'dns';
 
 // Preferir IPv4 también en el proceso padre (extra, además del NODE_OPTIONS)
-dns.setDefaultResultOrder('ipv4first');
+// dns.setDefaultResultOrder('ipv4first');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
