@@ -13,7 +13,7 @@ router.get('/detalle', getEquiposConDetalle);
 router.get('/filtrar', getEquiposFiltrados);
 router.get('/check', checkEquipoRoute);
 
-router.get('/marca-modelo-dni', getEquipoByMarcaModeloDni); // obtener equipo por marca, modelo y dni
+router.post('/marca-modelo-dni', getEquipoByMarcaModeloDni); // obtener equipo por marca, modelo y dni
 
 router.get('/:id', getEquipoById);
 router.put('/:id', updateEquipo);
