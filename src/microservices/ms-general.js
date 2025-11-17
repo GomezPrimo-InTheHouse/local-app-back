@@ -27,6 +27,7 @@ const allowedOrigins = [
   /\.vercel\.app$/,
   "https://lanita-buckshee-enharmonically.ngrok-free.dev",
   "https://lanita-buckshee-enharmonically.ngrok-free.app",
+  "http://localhost:7000"
 ];
 
 function isHostAllowed(origin) {

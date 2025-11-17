@@ -101,14 +101,14 @@ export const createEquipo = async (req, res) => {
   }
 
   // Normalización
-  const v_tipo      = String(tipo).trim();
-  const v_marca     = String(marca).trim();
-  const v_modelo    = String(modelo).trim();
-  const v_password  = password == null ? null : String(password).trim();
-  const v_problema  = problema == null ? null : String(problema).trim();
-  const v_patron    = patron == null ? null : String(patron).trim();
+  const v_tipo = String(tipo).trim();
+  const v_marca = String(marca).trim();
+  const v_modelo = String(modelo).trim();
+  const v_password = password == null ? null : String(password).trim();
+  const v_problema = problema == null ? null : String(problema).trim();
+  const v_patron = patron == null ? null : String(patron).trim();
   const v_clienteId = Number(cliente_id);
-  const v_estadoId  = Number(estado_id);
+  const v_estadoId = Number(estado_id);
   const v_fechaIngreso = fecha_ingreso ? String(fecha_ingreso) : null;
 
   const client = await pool.connect();
@@ -186,7 +186,7 @@ export const createEquipo = async (req, res) => {
 
     try {
       const twilioResponse = await axios.post(
-        'http://localhost:7002/twilio/enviar-mensaje', 
+        'http://localhost:7002/twilio/enviar-mensaje',
         payloadMs
       );
 
@@ -204,7 +204,7 @@ export const createEquipo = async (req, res) => {
       });
     }
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch {}
+    try { await client.query('ROLLBACK'); } catch { }
     console.error('❌ Error en createEquipo (SQL txn):', err);
     return res.status(500).json({
       success: false,
@@ -301,7 +301,7 @@ export const getEquipos = async (req, res) => {
 //           i.fecha_ingreso,
 //           i.fecha_egreso,
 //           i.estado_id as estado_ingreso,
-          
+
 
 //           -- Último presupuesto
 //           p.id AS presupuesto_id,
@@ -467,20 +467,20 @@ export const getEquipoById = async (req, res) => {
       detalles: {
         ingreso: ingresoData
           ? {
-              id: ingresoData.id,
-              fecha_ingreso: ingresoData.fecha_ingreso,
-              fecha_egreso: ingresoData.fecha_egreso,
-              estado: ingresoData.estado_id
-            }
+            id: ingresoData.id,
+            fecha_ingreso: ingresoData.fecha_ingreso,
+            fecha_egreso: ingresoData.fecha_egreso,
+            estado: ingresoData.estado_id
+          }
           : null,
         presupuesto: presupuestoData
           ? {
-              id: presupuestoData.id,
-              fecha: presupuestoData.fecha,
-              costo: presupuestoData.costo,
-              total: presupuestoData.total,
-              observaciones: presupuestoData.observaciones
-            }
+            id: presupuestoData.id,
+            fecha: presupuestoData.fecha,
+            costo: presupuestoData.costo,
+            total: presupuestoData.total,
+            observaciones: presupuestoData.observaciones
+          }
           : null
       }
     };
@@ -626,6 +626,54 @@ export const deleteEquipo = async (req, res) => {
   }
 };
 
+// obtener un equipo por la marca, el modelo y el dni del cliente asociado con SQL PURO
+
+export const getEquipoByMarcaModeloDni = async (req, res) => {
+
+  // return res.status(501).json({ msg: 'getEquipoByMarcaModeloDni no implementado aún con Supabase' });
+  try {
+    const { marca, modelo, dni } = req.body;
+    // quisiera obtener el estado del ingreso vinculado al equipo y el nombre del estado del equipo tambien
+const query = `
+    SELECT 
+        e.*,
+        c.nombre AS cliente_nombre,
+        c.apellido AS cliente_apellido,
+        c.dni AS cliente_dni,
+        es.nombre AS estado_nombre  -- 👈 Nombre del estado obtenido directamente del equipo
+    FROM 
+        equipo e
+    INNER JOIN 
+        cliente c ON e.cliente_id = c.id
+    LEFT JOIN 
+        estado es ON e.estado_id = es.id  -- 👈 Conexión directa a la tabla de estados
+    WHERE 
+        LOWER(e.marca) = LOWER($1)
+        AND LOWER(e.modelo) = LOWER($2)
+        AND c.dni = $3
+    ORDER BY 
+        e.fecha_ingreso DESC
+    LIMIT 1;
+`;
+
+    const { rows } = await pool.query(query, [marca, modelo, dni]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ msg: 'Equipo no encontrado' });
+    }
+
+    res.json(rows[0]);
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+
+  }
+}
+
+
+export const checkEquipoRoute = async (id) => {
+  return res.status(501).json({ msg: 'checkEquipoRoute no implementado aún con Supabase' });
+}
 
 
 //FILTROS SIN SUPABASE (FALTA MIGRAR A SUPABASE)
@@ -915,14 +963,16 @@ export const getEquiposConDetalle = async (_req, res) => {
 
 // Exportar las funciones para ser utilizadas en las rutas
 export default {
-    getEquipos,
-    getEquipoById,
-    createEquipo,
-    updateEquipo,
-    deleteEquipo,
-    getEquiposByTipo,
-    getEquiposFiltrados,
-    getEquiposByCliente,
-    getEquiposConDetalle
+  getEquipos,
+  getEquipoById,
+  createEquipo,
+  updateEquipo,
+  deleteEquipo,
+  getEquiposByTipo,
+  getEquiposFiltrados,
+  getEquiposByCliente,
+  getEquiposConDetalle,
+  obtenerEquiposbyClientId,
+  checkEquipoRoute
 };
 
