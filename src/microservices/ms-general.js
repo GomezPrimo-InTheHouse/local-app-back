@@ -25,8 +25,6 @@ const allowedOrigins = [
   "http://localhost:4173",
   "https://local-app-front.vercel.app",
   /\.vercel\.app$/,
-  "https://lanita-buckshee-enharmonically.ngrok-free.dev",
-  "https://lanita-buckshee-enharmonically.ngrok-free.app",
   "http://localhost:7000"
 ];
 
@@ -62,7 +60,7 @@ app.use((req, res, next) => {
   const reqHeaders = req.headers["access-control-request-headers"];
   res.header(
     "Access-Control-Allow-Headers",
-    reqHeaders || "Content-Type, Authorization, ngrok-skip-browser-warning"
+    reqHeaders || "Content-Type, Authorization"
   );
 
   if (req.method === "OPTIONS") {
