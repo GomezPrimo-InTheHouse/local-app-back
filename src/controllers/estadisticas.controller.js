@@ -1,5 +1,7 @@
 // import { pool } from '../config/db.js';
 import { supabase } from '../config/supabase.js';
+import { pool } from '../config/supabaseAuthModule.js';
+
 /**
  * 1️⃣ Trabajos realizados en el mes + dinero obtenido
  */
