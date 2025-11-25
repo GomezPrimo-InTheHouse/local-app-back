@@ -418,70 +418,182 @@ export const getResumenVentasPorPeriodo = async (req, res) => {
 // };
 
 
+// endpoint utilizado para obtener el resumen de ventas por mes específico ( actualmente es el que utiliza el frontend )
+// export const getResumenVentasPorMes = async (req, res) => {
+//   const { mes, anio } = req.query;
 
+//   if (!mes || !anio) {
+//     return res.status(400).json({
+//       success: false,
+//       error: "Debes proporcionar 'mes' y 'anio' en el cuerpo de la petición"
+//     });
+//   }
+
+//   try {
+//     // llamar RPC: atención a los nombres de parámetro: _anio, _mes
+//     const { data: rows, error } = await supabase
+//       .rpc('get_resumen_ventas_por_mes', { _anio: Number(anio), _mes: Number(mes) });
+
+//     if (error) throw error;
+
+//     // Reconstruir exactamente la misma estructura que tu versión con pool.query
+//     const ventasMap = {};
+//     let total_ventas = 0;
+
+//     for (const row of rows || []) {
+//       if (!ventasMap[row.venta_id]) {
+//         ventasMap[row.venta_id] = {
+//           venta_id: row.venta_id,
+//           fecha: row.fecha,
+//           cliente_id: row.cliente_id,
+//           nombre_cliente: row.nombre_cliente,
+//           productos: [],
+//           total: 0
+//         };
+//       }
+
+//       const subtotal = Number(row.cantidad) * Number(row.precio_unitario);
+//       ventasMap[row.venta_id].productos.push({
+//         producto_id: row.producto_id,
+//         nombre_producto: row.nombre_producto,
+//         cantidad: Number(row.cantidad),
+//         precio_unitario: Number(row.precio_unitario),
+//         subtotal
+//       });
+
+//       ventasMap[row.venta_id].total += subtotal;
+//     }
+
+//     const ventas = Object.values(ventasMap);
+//     total_ventas = ventas.reduce((sum, v) => sum + v.total, 0);
+
+//     return res.status(200).json({
+//       success: true,
+//       data: {
+//         total_ventas,
+//         ventas
+//       }
+//     });
+//   } catch (error) {
+//     console.error("Error al obtener las ventas del mes:", error?.message || error);
+//     return res.status(500).json({
+//       success: false,
+//       error: "Error al obtener las ventas del mes"
+//     });
+//   }
+// };
+
+//inicio test : pasando a SQL PURO y añadiendo costos
 export const getResumenVentasPorMes = async (req, res) => {
   const { mes, anio } = req.query;
 
   if (!mes || !anio) {
     return res.status(400).json({
       success: false,
-      error: "Debes proporcionar 'mes' y 'anio' en el cuerpo de la petición"
+      error: "Debes proporcionar 'mes' y 'anio' como query params (?mes=..&anio=..)",
+    });
+  }
+
+  const nMes = Number(mes);
+  const nAnio = Number(anio);
+
+  if (!Number.isInteger(nMes) || !Number.isInteger(nAnio) || nMes < 1 || nMes > 12) {
+    return res.status(400).json({
+      success: false,
+      error: "Los parámetros 'mes' (1-12) y 'anio' deben ser números válidos",
     });
   }
 
   try {
-    // llamar RPC: atención a los nombres de parámetro: _anio, _mes
-    const { data: rows, error } = await supabase
-      .rpc('get_resumen_ventas_por_mes', { _anio: Number(anio), _mes: Number(mes) });
+    const sql = `
+      SELECT
+        v.id           AS venta_id,
+        v.estado_id,
+        v.fecha,
+        c.id           AS cliente_id,
+        c.nombre       AS nombre_cliente,
+        p.id           AS producto_id,
+        p.nombre       AS nombre_producto,
+        dv.cantidad,
+        dv.precio_unitario,
+        p.costo        AS costo_unitario
+      FROM venta v
+      JOIN cliente       c  ON c.id = v.cliente_id
+      JOIN detalle_venta dv ON dv.venta_id = v.id
+      JOIN producto      p  ON p.id = dv.producto_id
+      WHERE
+        EXTRACT(YEAR FROM v.fecha)  = $1
+        AND EXTRACT(MONTH FROM v.fecha) = $2
+        AND v.estado_id != 20  -- excluir ventas dadas de baja
+      ORDER BY v.fecha ASC;
+    `;
 
-    if (error) throw error;
+    const { rows } = await pool.query(sql, [nAnio, nMes]);
 
-    // Reconstruir exactamente la misma estructura que tu versión con pool.query
     const ventasMap = {};
     let total_ventas = 0;
+    let total_costos = 0;
 
     for (const row of rows || []) {
-      if (!ventasMap[row.venta_id]) {
-        ventasMap[row.venta_id] = {
-          venta_id: row.venta_id,
+      const ventaId = row.venta_id;
+
+      if (!ventasMap[ventaId]) {
+        ventasMap[ventaId] = {
+          venta_id: ventaId,
           fecha: row.fecha,
           cliente_id: row.cliente_id,
           nombre_cliente: row.nombre_cliente,
           productos: [],
-          total: 0
+          total: 0,
+          total_costo: 0,
         };
       }
 
-      const subtotal = Number(row.cantidad) * Number(row.precio_unitario);
-      ventasMap[row.venta_id].productos.push({
+      const cantidad = Number(row.cantidad) || 0;
+      const precioUnit = Number(row.precio_unitario) || 0;
+      const costoUnit = Number(row.costo_unitario) || 0;
+
+      const subtotal = cantidad * precioUnit;
+      const subtotal_costo = cantidad * costoUnit;
+
+      ventasMap[ventaId].productos.push({
         producto_id: row.producto_id,
         nombre_producto: row.nombre_producto,
-        cantidad: Number(row.cantidad),
-        precio_unitario: Number(row.precio_unitario),
-        subtotal
+        cantidad,
+        precio_unitario: precioUnit,
+        costo_unitario: costoUnit,
+        subtotal,
+        subtotal_costo,
       });
 
-      ventasMap[row.venta_id].total += subtotal;
+      ventasMap[ventaId].total += subtotal;
+      ventasMap[ventaId].total_costo += subtotal_costo;
     }
 
     const ventas = Object.values(ventasMap);
+
     total_ventas = ventas.reduce((sum, v) => sum + v.total, 0);
+    total_costos = ventas.reduce((sum, v) => sum + v.total_costo, 0);
+    const total_ganancia = total_ventas - total_costos;
 
     return res.status(200).json({
       success: true,
       data: {
         total_ventas,
-        ventas
-      }
+        total_costos,
+        total_ganancia,
+        ventas,
+      },
     });
   } catch (error) {
     console.error("Error al obtener las ventas del mes:", error?.message || error);
     return res.status(500).json({
       success: false,
-      error: "Error al obtener las ventas del mes"
+      error: "Error al obtener las ventas del mes",
     });
   }
 };
+//fin test : pasando a SQL PURO y añadiendo costos
 
 
 
