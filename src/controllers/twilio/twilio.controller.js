@@ -17,6 +17,7 @@ const { numero, cliente, equipo } = req.body;
       to: `whatsapp:${numero}`,
       body: `Hola ${cliente.nombre} ${cliente.apellido}, gracias por elegir JG Informática. 
       Hemos cargado correctamente su equipo: ${equipo} para su reparación.
+      En nuestra web https://web-jg-informatica.vercel.app/  puede hacer el seguimiento del estado de su equipo con Marca, Modelo y su DNI.
       Adjunto nuestras condiciones del servicio técnico: 
       1. Garantía: Ofrecemos garantía en las reparaciones realizadas.
       2. Privacidad: Respetamos la confidencialidad de los datos en su equipo.
