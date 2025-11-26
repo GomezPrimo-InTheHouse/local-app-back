@@ -422,15 +422,33 @@ export const createVenta = async (req, res) => {
 
 
 // ✅ Obtener todas las ventas con detalles where estado_id = 19
+// ✅ Obtener todas las ventas con detalles where estado_id = 19, incluyendo costo del producto
 export const getVentas = async (req, res) => {
   try {
     const { data, error } = await supabase
       .from("venta")
       .select(`
-        id, fecha, total, monto_abonado, saldo,
-        cliente:cliente_id (id, nombre, apellido),
-        detalle_venta(
-          id, producto_id, cantidad, precio_unitario, subtotal
+        id,
+        fecha,
+        total,
+        monto_abonado,
+        saldo,
+        cliente:cliente_id (
+          id,
+          nombre,
+          apellido
+        ),
+        detalle_venta (
+          id,
+          producto_id,
+          cantidad,
+          precio_unitario,
+          subtotal,
+          producto:producto_id (
+            id,
+            nombre,
+            costo
+          )
         )
       `)
       .eq("estado_id", 19) // solo activas
@@ -444,6 +462,7 @@ export const getVentas = async (req, res) => {
     res.status(500).json({ success: false, error: "Error al obtener ventas" });
   }
 };
+
 
 // ✅ Obtener una venta por ID
 export const getVentaById = async (req, res) => {
