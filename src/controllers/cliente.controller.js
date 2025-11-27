@@ -153,6 +153,8 @@ export const getClientes = async (req, res) => {
 /* Crear nuevo cliente -> usa RPC atómica crear_cliente_if_not_exists */
 export const createCliente = async (req, res) => {
   try {
+    console.log("BODY createCliente:", req.body);
+    console.log("FILE createCliente:", req.file);
     const {
       nombre,
       apellido,
