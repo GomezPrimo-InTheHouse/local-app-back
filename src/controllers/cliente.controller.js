@@ -107,89 +107,230 @@ export const getClientes = async (req, res) => {
   }
 };
 
-/* Obtener cliente por ID */
-export const getClienteById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { data, error } = await supabase
-      .from('cliente')
-      .select('*')
-      .eq('id', id)
-      .single();
 
-    // Si no hay fila .single() devuelve error; por seguridad comprobamos data
-    if (error && (data === null || /No rows|Results contain 0 rows/i.test(error.message || ''))) {
-      return res.status(404).json({ msg: 'Cliente no encontrado' });
-    }
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message || err });
-  }
-};
 
 /* Crear nuevo cliente -> usa RPC atómica crear_cliente_si_no_existe */
+
+// export const createCliente = async (req, res) => {
+//   try {
+//     const { nombre, apellido, dni, direccion, celular, celular_contacto } = req.body;
+//     if (!dni) return res.status(400).json({ msg: 'DNI requerido' });
+
+//     const dni_trim = dni.trim();
+
+//     // Llamamos a la RPC creada arriba (es atómica y evita race conditions)
+//     const { data, error } = await supabase.rpc('crear_cliente_if_not_exists', {
+//       _nombre: nombre ?? null,
+//       _apellido: apellido ?? null,
+//       _dni: dni_trim,
+//       _direccion: direccion ?? null,
+//       _celular: celular ?? null,
+//       _celular_contacto: celular_contacto ?? null,
+//     });
+
+//     if (error) {
+//       const msg = (error.message || '').toUpperCase();
+//       if (msg.includes('CLIENTE_EXISTE')) {
+//         return res.status(400).json({ msg: 'El cliente ya existe' });
+//       }
+//       return res.status(500).json({ error: error.message || error });
+//     }
+
+//     // rpc devuelve rows (TABLE) -> puede venir como array
+//     const cliente = Array.isArray(data) ? data[0] : data;
+//     res.status(200).json(cliente);
+
+//   } catch (err) {
+
+//     res.status(500).json({ error: err.message || err });
+    
+//   }
+// };
+
+//iniico test create cliente con foto
+
+
+/* Crear nuevo cliente -> usa RPC atómica crear_cliente_if_not_exists */
 export const createCliente = async (req, res) => {
   try {
-    const { nombre, apellido, dni, direccion, celular, celular_contacto } = req.body;
-    if (!dni) return res.status(400).json({ msg: 'DNI requerido' });
+    const {
+      nombre,
+      apellido,
+      dni,
+      direccion,
+      celular,
+      celular_contacto,
+      foto_url: fotoUrlBody, // por si te mandan un URL directo
+    } = req.body;
+
+    if (!dni) {
+      return res.status(400).json({ msg: "DNI requerido" });
+    }
 
     const dni_trim = dni.trim();
+    let fotoUrlFinal = fotoUrlBody || null;
 
-    // Llamamos a la RPC creada arriba (es atómica y evita race conditions)
-    const { data, error } = await supabase.rpc('crear_cliente_if_not_exists', {
-      _nombre: nombre ?? null,
-      _apellido: apellido ?? null,
-      _dni: dni_trim,
-      _direccion: direccion ?? null,
-      _celular: celular ?? null,
-      _celular_contacto: celular_contacto ?? null,
-    });
+    // 🔹 Si viene archivo, lo subimos a Supabase Storage
+    if (req.file) {
+      const file = req.file;
+      const ext =
+        (file.originalname && file.originalname.split(".").pop()) || "jpg";
+      const uniqueId = `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const fileName = `${uniqueId}.${ext}`;
+      const filePath = `clientes/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("clientes-fotos") // 👈 nombre del bucket
+        .upload(filePath, file.buffer, {
+          contentType: file.mimetype,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error("Error al subir imagen a Supabase Storage:", uploadError);
+        // Podés elegir seguir sin foto o cortar acá
+        // return res.status(500).json({ error: "No se pudo subir la imagen" });
+      } else {
+        const { data: publicData } = supabase.storage
+          .from("clientes-fotos")
+          .getPublicUrl(filePath);
+
+        fotoUrlFinal = publicData?.publicUrl || null;
+      }
+    }
+
+    // 🔹 Llamamos al RPC (ahora incluye _foto_url)
+    const { data, error } = await supabase.rpc(
+      "crear_cliente_if_not_exists",
+      {
+        _nombre: nombre ?? null,
+        _apellido: apellido ?? null,
+        _dni: dni_trim,
+        _direccion: direccion ?? null,
+        _celular: celular ?? null,
+        _celular_contacto: celular_contacto ?? null,
+        _foto_url: fotoUrlFinal,
+      }
+    );
 
     if (error) {
-      const msg = (error.message || '').toUpperCase();
-      if (msg.includes('CLIENTE_EXISTE')) {
-        return res.status(400).json({ msg: 'El cliente ya existe' });
+      const msg = (error.message || "").toUpperCase();
+      if (msg.includes("CLIENTE_EXISTE")) {
+        return res.status(400).json({ msg: "El cliente ya existe" });
       }
       return res.status(500).json({ error: error.message || error });
     }
 
-    // rpc devuelve rows (TABLE) -> puede venir como array
     const cliente = Array.isArray(data) ? data[0] : data;
-    res.status(200).json(cliente);
-
+    return res.status(200).json(cliente);
   } catch (err) {
-
-    res.status(500).json({ error: err.message || err });
-    
+    console.error("Error en createCliente:", err);
+    return res.status(500).json({ error: err.message || err });
   }
 };
+
+//fin test create cliente con foto
+
+/* Actualizar cliente -> usa RPC actualizar_cliente para validar dni único */
+// export const updateCliente = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { nombre, apellido, dni, direccion, celular, celular_contacto } = req.body;
+
+//     const { data, error } = await supabase
+//       .rpc('actualizar_cliente', {
+//         _id: id,
+//         _nombre: nombre,
+//         _apellido: apellido,
+//         _dni: dni,
+//         _direccion: direccion,
+//         _celular: celular,
+//         _celular_contacto: celular_contacto
+//       });
+
+//     if (error) throw error;
+//     if (data.length === 0) return res.status(404).json({ msg: 'Cliente no encontrado' });
+
+//     res.json(data[0]);
+//   } catch (err) {
+//     res.status(500).json({ error: err.message });
+//   }
+// };
 
 /* Actualizar cliente -> usa RPC actualizar_cliente para validar dni único */
 export const updateCliente = async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, apellido, dni, direccion, celular, celular_contacto } = req.body;
+    const {
+      nombre,
+      apellido,
+      dni,
+      direccion,
+      celular,
+      celular_contacto,
+      foto_url: fotoUrlBody, // puede venir desde el front
+    } = req.body;
 
-    const { data, error } = await supabase
-      .rpc('actualizar_cliente', {
-        _id: id,
-        _nombre: nombre,
-        _apellido: apellido,
-        _dni: dni,
-        _direccion: direccion,
-        _celular: celular,
-        _celular_contacto: celular_contacto
-      });
+    let fotoUrlFinal = fotoUrlBody ?? null;
+
+    // 🔹 Si viene archivo nuevo, reemplazamos la foto en Storage
+    if (req.file) {
+      const file = req.file;
+      const ext =
+        (file.originalname && file.originalname.split(".").pop()) || "jpg";
+      const uniqueId = `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const fileName = `${uniqueId}.${ext}`;
+      const filePath = `clientes/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("clientes-fotos")
+        .upload(filePath, file.buffer, {
+          contentType: file.mimetype,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        console.error(
+          "Error al subir nueva imagen de cliente a Supabase Storage:",
+          uploadError
+        );
+        // Podés decidir si cortás acá o seguís manteniendo la foto anterior
+      } else {
+        const { data: publicData } = supabase.storage
+          .from("clientes-fotos")
+          .getPublicUrl(filePath);
+
+        fotoUrlFinal = publicData?.publicUrl || null;
+      }
+    }
+
+    const { data, error } = await supabase.rpc("actualizar_cliente", {
+      _id: Number(id),
+      _nombre: nombre ?? null,
+      _apellido: apellido ?? null,
+      _dni: dni ?? null,
+      _direccion: direccion ?? null,
+      _celular: celular ?? null,
+      _celular_contacto: celular_contacto ?? null,
+      _foto_url: fotoUrlFinal,
+    });
 
     if (error) throw error;
-    if (data.length === 0) return res.status(404).json({ msg: 'Cliente no encontrado' });
+    if (!data || data.length === 0) {
+      return res.status(404).json({ msg: "Cliente no encontrado" });
+    }
 
-    res.json(data[0]);
+    return res.json(data[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Error en updateCliente:", err);
+    return res.status(500).json({ error: err.message || err });
   }
 };
+
 
 /* Eliminar cliente */
 export const deleteCliente = async (req, res) => {
@@ -215,5 +356,24 @@ export const deleteCliente = async (req, res) => {
     res.status(500).json({ error: err.message || err });
   }
 };
+/* Obtener cliente por ID */
+export const getClienteById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabase
+      .from('cliente')
+      .select('*')
+      .eq('id', id)
+      .single();
 
+    // Si no hay fila .single() devuelve error; por seguridad comprobamos data
+    if (error && (data === null || /No rows|Results contain 0 rows/i.test(error.message || ''))) {
+      return res.status(404).json({ msg: 'Cliente no encontrado' });
+    }
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message || err });
+  }
+};
 
