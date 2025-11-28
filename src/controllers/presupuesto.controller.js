@@ -752,6 +752,193 @@ export const aprobarPresupuesto = async (req, res) => {
 
 
 
+// Body esperado:
+// {
+//   detalles: [
+//     { producto_id: 11, cantidad: 2, precio_unitario: 5000 },
+//     { producto_id: 15, cantidad: 1, precio_unitario: 8000 },
+//     ...
+//   ]
+// }
+export const savePresupuestoDetalles = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const presupuestoId = Number(id);
+
+    if (!presupuestoId || Number.isNaN(presupuestoId)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "ID de presupuesto inválido" });
+    }
+
+    const { detalles } = req.body || {};
+
+    if (!Array.isArray(detalles)) {
+      return res.status(400).json({
+        success: false,
+        error: "El campo 'detalles' debe ser un array",
+      });
+    }
+
+    // 🔹 1) Borrar detalles existentes del presupuesto
+    const { error: delError } = await supabase
+      .from("presupuesto_detalle")
+      .delete()
+      .eq("presupuesto_id", presupuestoId);
+
+    if (delError) {
+      console.error("Error borrando detalles previos:", delError);
+      return res.status(500).json({
+        success: false,
+        error: delError.message || "Error borrando detalles previos",
+      });
+    }
+
+    // Si no hay nuevos detalles, terminamos acá
+    if (detalles.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+        message: "Detalles borrados; no se insertaron nuevos registros",
+      });
+    }
+
+    // 🔹 2) Normalizar y validar los nuevos detalles
+    const rowsToInsert = detalles
+      .map((d) => {
+        const producto_id = Number(d.producto_id);
+        const cantidad = Number(d.cantidad);
+        const precio_unitario = Number(d.precio_unitario);
+
+        if (
+          !producto_id ||
+          Number.isNaN(producto_id) ||
+          !cantidad ||
+          Number.isNaN(cantidad) ||
+          !precio_unitario ||
+          Number.isNaN(precio_unitario)
+        ) {
+          return null;
+        }
+
+        const subtotal = cantidad * precio_unitario;
+
+        return {
+          presupuesto_id: presupuestoId,
+          producto_id,
+          cantidad,
+          precio_unitario,
+          subtotal,
+        };
+      })
+      .filter(Boolean);
+
+    if (rowsToInsert.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Ninguna línea de detalle es válida. Verificá producto_id, cantidad y precio_unitario.",
+      });
+    }
+
+    // 🔹 3) Insertar nuevos detalles
+    const { data: inserted, error: insError } = await supabase
+      .from("presupuesto_detalle")
+      .insert(rowsToInsert)
+      .select();
+
+    if (insError) {
+      console.error("Error insertando nuevos detalles:", insError);
+      return res.status(500).json({
+        success: false,
+        error: insError.message || "Error insertando detalles de presupuesto",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: inserted || [],
+    });
+  } catch (err) {
+    console.error("Excepción en savePresupuestoDetalles:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Error guardando detalles de presupuesto",
+    });
+  }
+};
+
+export const getPresupuestoWithDetalles = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const presupuestoId = Number(id);
+
+    if (!presupuestoId || Number.isNaN(presupuestoId)) {
+      return res
+        .status(400)
+        .json({ success: false, error: "ID de presupuesto inválido" });
+    }
+
+    // 🔹 Traemos el presupuesto + sus detalles + producto
+    const { data, error } = await supabase
+      .from("presupuesto")
+      .select(
+        `
+        id,
+        ingreso_id,
+        fecha,
+        costo,
+        total,
+        observaciones,
+        estado_id,
+        presupuesto_detalle (
+          id,
+          producto_id,
+          cantidad,
+          precio_unitario,
+          subtotal,
+          producto (
+            id,
+            nombre,
+            descripcion,
+            precio,
+            costo
+          )
+        )
+      `
+      )
+      .eq("id", presupuestoId)
+      .single();
+
+    if (error) {
+      console.error("Error obteniendo presupuesto con detalles:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Error obteniendo presupuesto",
+      });
+    }
+
+    if (!data) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Presupuesto no encontrado" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (err) {
+    console.error("Excepción en getPresupuestoWithDetalles:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Error obteniendo presupuesto con detalles",
+    });
+  }
+};
+
+
+
 
 export default  {
   createPresupuesto,
@@ -762,5 +949,7 @@ export default  {
   getPresupuestosByEquipo,
   getBalancePresupuestos,
   aprobarPresupuesto,
+  savePresupuestoDetalles,
+  getPresupuestoWithDetalles
 };
 
