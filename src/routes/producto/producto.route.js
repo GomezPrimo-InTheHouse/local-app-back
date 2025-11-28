@@ -7,8 +7,9 @@ import {
   getProductoById,
   updateProducto,
   deleteProducto,
-  buscarProductos
-} from "../controllers/producto.controller.js";
+  buscarProductos,
+  getRepuestosProducto,
+} from "../../controllers/producto/producto.controller.js";
 
 const router = express.Router();
 
@@ -18,5 +19,6 @@ router.get("/buscar", buscarProductos);
 router.get("/:id", getProductoById);   // Obtener por ID
 router.put("/:id", updateProducto);    // Actualizar
 router.delete("/:id", deleteProducto); // Eliminar
+router.get("/repuestos", getRepuestosProducto);
 
 export default router;

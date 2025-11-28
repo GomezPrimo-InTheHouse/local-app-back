@@ -11,7 +11,8 @@ import AuthRoute from "../routes/auth/auth.routes.js";
 import EstadoRoute from "../routes/estado.route.js";
 import HistorialRoute from "../routes/historial.route.js";
 import EstadisticasRoute from "../routes/estadisticas.routes.js";
-import ProductoRoute from "../routes/producto.route.js";
+import ProductoRoute from "../routes/producto/producto.route.js";
+import CategoriaProductoRoute from "../routes/producto/categoriaProducto.route.js";
 import VentaRoute from "../routes/venta.route.js";
 
 dotenv.config();
@@ -121,6 +122,7 @@ app.use("/historial", HistorialRoute);
 app.use("/estadisticas", EstadisticasRoute);
 app.use("/producto", ProductoRoute);
 app.use("/venta", VentaRoute);
+app.use("/categoria-producto", CategoriaProductoRoute);
 
 // healthcheck
 app.get("/health", (_req, res) => {
