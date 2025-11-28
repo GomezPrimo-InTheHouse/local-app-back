@@ -408,11 +408,43 @@ export const buscarProductos = async (req, res) => {
  * Devuelve sólo productos cuya categoría tenga descripcion que comience con 'repuesto-'
  * (ej: 'repuesto-taller-celular', 'repuesto-taller-notebook', 'repuesto-taller-pc')
  */
+// ✅ Obtener productos de tipo "repuesto-..." (opcionalmente filtrados por tipo_equipo)
 export const getRepuestosProducto = async (req, res) => {
   try {
     const { tipo_equipo } = req.query; // ej: 'celular', 'notebook', 'pc'
 
-    let query = supabase
+    // 1) Buscar categorías que sean de repuestos
+    let catQuery = supabase
+      .from("categoria_producto")
+      .select("id, nombre, descripcion, tipo_equipo")
+      .ilike("descripcion", "repuesto-%"); // ej: 'repuesto-taller-celular'
+
+    if (tipo_equipo) {
+      catQuery = catQuery.eq("tipo_equipo", tipo_equipo);
+    }
+
+    const { data: categorias, error: catError } = await catQuery;
+
+    if (catError) {
+      console.error("Error buscando categorías de repuestos:", catError);
+      return res.status(500).json({
+        success: false,
+        error: "Error al obtener categorías de repuestos",
+      });
+    }
+
+    if (!categorias || categorias.length === 0) {
+      // No hay categorías de repuesto para ese tipo_equipo → devolvemos lista vacía
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
+    }
+
+    const categoriaIds = categorias.map((c) => c.id);
+
+    // 2) Buscar productos que pertenezcan a esas categorías
+    const { data, error } = await supabase
       .from("producto")
       .select(
         `
@@ -431,17 +463,13 @@ export const getRepuestosProducto = async (req, res) => {
         )
       `
       )
-      .not("categoria_id", "is", null) // sólo productos con categoría asignada
-      .ilike("categoria_producto.descripcion", "repuesto-%"); // 👈 sólo categorías de repuestos
+      .in("categoria_id", categoriaIds)
+      .order("nombre", { ascending: true });
 
-    // Filtro opcional por tipo_equipo
-    if (tipo_equipo) {
-      query = query.eq("categoria_producto.tipo_equipo", tipo_equipo);
+    if (error) {
+      console.error("Error en query de productos de repuestos:", error);
+      throw error;
     }
-
-    const { data, error } = await query.order("nombre", { ascending: true });
-
-    if (error) throw error;
 
     return res.status(200).json({
       success: true,
@@ -455,3 +483,4 @@ export const getRepuestosProducto = async (req, res) => {
     });
   }
 };
+
