@@ -8,7 +8,7 @@ import { getPresupuestos, createPresupuesto, updatePresupuesto,
 router.get('/', getPresupuestos); // Obtener todos los presupuestos
 router.post('/', createPresupuesto); // Crear un nuevo presupuesto con validación de existencia equipo
 router.get('/balance', getBalancePresupuestos); // Obtener balance de presupuestos
-router.post("/:id/aprobar", aprobarPresupuesto); // Aprobar un presupuesto
+router.post("/:id/aprobar-venta", aprobarPresupuesto); // Aprobar un presupuesto
 router.get('/:equipoId', getPresupuestosByEquipo); // Obtener presupuestos por equipo
 router.put('/:id', updatePresupuesto); // Actualizar un presupuesto
 router.delete('/:id', deletePresupuesto); // Eliminar un presupuesto
