@@ -91,29 +91,137 @@ import { supabase} from '../config/supabase.js';
 
 
 
+// export const createPresupuesto = async (req, res) => {
+//   const { ingreso_id, fecha, costo, total, observaciones, estado_id } = req.body;
+
+//   try {
+//     const { data, error } = await supabase
+//       .from('presupuesto')
+//       .insert([
+//         { ingreso_id, fecha, costo, total, observaciones, estado_id }
+//       ])
+//       .select()
+//       .single();
+
+//     if (error) {
+//       console.error('Error creando presupuesto (Supabase):', error);
+//       return res.status(500).json({ error: 'Error creando presupuesto' });
+//     }
+
+//     return res.status(200).json(data); // misma salida que tu original
+//   } catch (err) {
+//     console.error('Excepción creando presupuesto:', err);
+//     return res.status(500).json({ error: 'Error creando presupuesto' });
+//   }
+// };
+
+//inicio test nuevo
+// controllers/presupuesto.controller.js
+
+
 export const createPresupuesto = async (req, res) => {
-  const { ingreso_id, fecha, costo, total, observaciones, estado_id } = req.body;
+  // ahora también aceptamos productos opcionales
+  const {
+    ingreso_id,
+    fecha,
+    costo,
+    total,
+    observaciones,
+    estado_id,
+    productos = [], // 👈 array opcional: [{ producto_id, cantidad, precio_unitario }]
+  } = req.body;
 
   try {
+    // ✅ validaciones mínimas (muy suaves para no romper lo actual)
+    if (!ingreso_id) {
+      return res
+        .status(400)
+        .json({ error: "ingreso_id es obligatorio para crear un presupuesto" });
+    }
+
+    // 1) Insert original del presupuesto (sin romper nada)
     const { data, error } = await supabase
-      .from('presupuesto')
+      .from("presupuesto")
       .insert([
-        { ingreso_id, fecha, costo, total, observaciones, estado_id }
+        {
+          ingreso_id,
+          fecha,
+          costo,
+          total,
+          observaciones,
+          estado_id,
+        },
       ])
       .select()
       .single();
 
     if (error) {
-      console.error('Error creando presupuesto (Supabase):', error);
-      return res.status(500).json({ error: 'Error creando presupuesto' });
+      console.error("Error creando presupuesto (Supabase):", error);
+      return res
+        .status(500)
+        .json({ error: "Error creando presupuesto" });
     }
 
-    return res.status(200).json(data); // misma salida que tu original
+    const presupuesto = data;
+    let detallesInsertados = [];
+
+    // 2) Si vienen productos, los insertamos en presupuesto_detalle
+    if (Array.isArray(productos) && productos.length > 0) {
+      const detallesPayload = productos
+        .filter(
+          (p) =>
+            p &&
+            p.producto_id &&
+            p.cantidad &&
+            !isNaN(Number(p.cantidad)) &&
+            p.precio_unitario != null &&
+            !isNaN(Number(p.precio_unitario))
+        )
+        .map((p) => {
+          const cantidadNum = Number(p.cantidad);
+          const precioNum = Number(p.precio_unitario);
+          return {
+            presupuesto_id: presupuesto.id,
+            producto_id: Number(p.producto_id),
+            cantidad: cantidadNum,
+            precio_unitario: precioNum,
+            subtotal: cantidadNum * precioNum,
+          };
+        });
+
+      if (detallesPayload.length > 0) {
+        const { data: detallesData, error: detError } = await supabase
+          .from("presupuesto_detalle")
+          .insert(detallesPayload)
+          .select();
+
+        if (detError) {
+          console.error(
+            "Error insertando detalles de presupuesto:",
+            detError
+          );
+        } else {
+          detallesInsertados = detallesData;
+        }
+      }
+    }
+
+    // 🔙 Para no romper el front actual:
+    // - devolvemos el mismo "data" que antes...
+    // - ...pero ahora con un campo extra "detalles"
+    return res.status(200).json({
+      ...presupuesto,
+      detalles: detallesInsertados,
+    });
   } catch (err) {
-    console.error('Excepción creando presupuesto:', err);
-    return res.status(500).json({ error: 'Error creando presupuesto' });
+    console.error("Excepción creando presupuesto:", err);
+    return res
+      .status(500)
+      .json({ error: "Error creando presupuesto" });
   }
 };
+
+//fin test nuevo
 
 /**
  * Obtener todos los presupuestos
@@ -172,27 +280,74 @@ export const getPresupuestos = async (req, res) => {
  * Obtener presupuestos por ingreso
  * Ordena por fecha desc — devuelve array (puede ser vacío).
  */
+// export const getPresupuestosByIngreso = async (req, res) => {
+//   try {
+//     const { ingresoId } = req.params;
+
+//     const { data, error } = await supabase
+//       .from('presupuesto')
+//       .select('*')
+//       .eq('ingreso_id', ingresoId)
+//       .order('fecha', { ascending: false });
+
+//     if (error) {
+//       console.error('Error obteniendo presupuestos por ingreso (Supabase):', error);
+//       return res.status(500).json({ error: error.message || 'Error obteniendo presupuestos' });
+//     }
+
+//     return res.status(200).json(data || []);
+//   } catch (err) {
+//     console.error('Excepción obteniendo presupuestos por ingreso:', err);
+//     return res.status(500).json({ error: err.message });
+//   }
+// };
+
+//inicio test nuevo
+
+
 export const getPresupuestosByIngreso = async (req, res) => {
   try {
     const { ingresoId } = req.params;
 
     const { data, error } = await supabase
       .from('presupuesto')
-      .select('*')
+      .select(`
+        *,
+        presupuesto_detalle (
+          id,
+          producto_id,
+          cantidad,
+          precio_unitario,
+          subtotal,
+          producto:producto_id (
+            id,
+            nombre,
+            precio,
+            costo
+          )
+        )
+      `)
       .eq('ingreso_id', ingresoId)
       .order('fecha', { ascending: false });
 
     if (error) {
       console.error('Error obteniendo presupuestos por ingreso (Supabase):', error);
-      return res.status(500).json({ error: error.message || 'Error obteniendo presupuestos' });
+      return res.status(500).json({
+        error: error.message || 'Error obteniendo presupuestos'
+      });
     }
 
-    return res.status(200).json(data || []);
+    return res.status(200).json(data ?? []);
   } catch (err) {
     console.error('Excepción obteniendo presupuestos por ingreso:', err);
     return res.status(500).json({ error: err.message });
   }
 };
+
+
+
+//fin test nuevo
+
 
 /**
  * Actualizar presupuesto
@@ -220,7 +375,6 @@ export const updatePresupuesto = async (req, res) => {
       return res.status(500).json({ error: error.message || 'Error actualizando presupuesto' });
     }
 
-    // rpc returns array (setof) — si no existe devuelve [] -> tratamos como 404
     const updated = Array.isArray(data) && data.length > 0 ? data[0] : data;
 
     if (!updated || (Array.isArray(updated) && updated.length === 0)) {
@@ -233,6 +387,7 @@ export const updatePresupuesto = async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 };
+
 
 export const deletePresupuesto = async (req, res) => {
   try {
@@ -355,7 +510,10 @@ export const getPresupuestosByEquipo = async (req, res) => {
   }
 };
 
+
 //supabase rpc obtener_balance_presupuestos
+
+
 
 export const getBalancePresupuestos = async (req, res) => {
   try {
@@ -429,6 +587,169 @@ export const getBalancePresupuestos = async (req, res) => {
   }
 };
 
+// ✅ Aprobar presupuesto: genera venta + detalle_venta y vincula venta_id
+export const aprobarPresupuesto = async (req, res) => {
+  try {
+    const { id } = req.params; // id del presupuesto
+    const { nuevo_estado_id } = req.body || {}; // estado "aprobado" opcional
+
+    const presupuestoIdNum = Number(id);
+    const estadoAprobadoId =
+      nuevo_estado_id == null || nuevo_estado_id === ""
+        ? null
+        : Number(nuevo_estado_id);
+
+    if (!presupuestoIdNum) {
+      return res.status(400).json({
+        error: "ID de presupuesto inválido",
+      });
+    }
+
+    // 1) Traer presupuesto + ingreso + equipo + cliente + detalles
+    const { data: presupuesto, error: presError } = await supabase
+      .from("presupuesto")
+      .select(
+        `
+        id,
+        ingreso_id,
+        costo,
+        total,
+        estado_id,
+        venta_id,
+        ingreso:ingreso_id (
+          id,
+          equipo_id,
+          equipo:equipo_id (
+            id,
+            cliente_id
+          )
+        ),
+        presupuesto_detalle (
+          id,
+          producto_id,
+          cantidad,
+          precio_unitario,
+          subtotal
+        )
+      `
+      )
+      .eq("id", presupuestoIdNum)
+      .maybeSingle();
+
+    if (presError) {
+      console.error("Error leyendo presupuesto:", presError);
+      return res.status(500).json({ error: "Error leyendo presupuesto" });
+    }
+
+    if (!presupuesto) {
+      return res.status(404).json({ error: "Presupuesto no encontrado" });
+    }
+
+    if (presupuesto.venta_id) {
+      return res.status(400).json({
+        error: "Este presupuesto ya tiene una venta asociada",
+      });
+    }
+
+    const clienteId = presupuesto.ingreso?.equipo?.cliente_id;
+    if (!clienteId) {
+      return res.status(400).json({
+        error:
+          "No se pudo determinar el cliente asociado al equipo de este presupuesto",
+      });
+    }
+
+    const detalles = presupuesto.presupuesto_detalle || [];
+    if (detalles.length === 0) {
+      return res.status(400).json({
+        error:
+          "El presupuesto no tiene productos asociados. No se generó la venta.",
+      });
+    }
+
+    const totalProductos = detalles.reduce(
+      (acc, d) => acc + (Number(d.subtotal) || 0),
+      0
+    );
+
+    // 2) Crear venta (sólo por los productos)
+    const fechaVenta = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const { data: venta, error: ventaError } = await supabase
+      .from("venta")
+      .insert([
+        {
+          fecha: fechaVenta,
+          total: totalProductos,
+          cliente_id: clienteId,
+          monto_abonado: totalProductos, // por ahora asumimos pago completo
+          saldo: 0,
+          estado_id: 19, // ⚠ usa el ID de tu "venta activa"
+        },
+      ])
+      .select()
+      .single();
+
+    if (ventaError) {
+      console.error("Error creando venta desde presupuesto:", ventaError);
+      return res.status(500).json({ error: "Error creando venta" });
+    }
+
+    // 3) Crear detalle_venta desde presupuesto_detalle
+    const detallesVentaPayload = detalles.map((d) => ({
+      venta_id: venta.id,
+      producto_id: d.producto_id,
+      cantidad: d.cantidad,
+      precio_unitario: d.precio_unitario,
+      subtotal: d.subtotal,
+    }));
+
+    const { error: dvError } = await supabase
+      .from("detalle_venta")
+      .insert(detallesVentaPayload);
+
+    if (dvError) {
+      console.error("Error creando detalle_venta:", dvError);
+      return res
+        .status(500)
+        .json({ error: "Error creando detalle de la venta" });
+    }
+
+    // 4) Actualizar presupuesto con venta_id y, si querés, nuevo estado
+    const updatePayload = {
+      venta_id: venta.id,
+    };
+    if (estadoAprobadoId) {
+      updatePayload.estado_id = estadoAprobadoId;
+    }
+
+    const { data: presUpd, error: presUpdError } = await supabase
+      .from("presupuesto")
+      .update(updatePayload)
+      .eq("id", presupuestoIdNum)
+      .select()
+      .single();
+
+    if (presUpdError) {
+      console.error("Error actualizando presupuesto:", presUpdError);
+      return res
+        .status(500)
+        .json({ error: "Error actualizando presupuesto" });
+    }
+
+    return res.status(200).json({
+      presupuesto: presUpd,
+      venta,
+    });
+  } catch (error) {
+    console.error("Excepción en aprobarPresupuesto:", error);
+    return res.status(500).json({
+      error: "Error al aprobar presupuesto y generar venta",
+    });
+  }
+};
+
+
 
 
 
@@ -439,6 +760,7 @@ export default  {
   updatePresupuesto,
   deletePresupuesto,
   getPresupuestosByEquipo,
-  getBalancePresupuestos
+  getBalancePresupuestos,
+  aprobarPresupuesto,
 };
 
