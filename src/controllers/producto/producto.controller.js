@@ -136,24 +136,39 @@ export const getProductos = async (req, res) => {
 export const getProductoById = async (req, res) => {
   try {
     const { id } = req.params;
+    const idNum = Number(id);
+
+    if (Number.isNaN(idNum)) {
+      return res.status(400).json({
+        success: false,
+        error: `ID de producto inválido: ${id}`,
+      });
+    }
 
     const { data, error } = await supabase
-      .from("producto")
-      .select("*")
-      .eq("id", id)
+      .from('producto')
+      .select('*')
+      .eq('id', idNum)
       .single();
 
-    if (error && error.code === "PGRST116") {
-      return res.status(404).json({ success: false, error: "Producto no encontrado" });
-    }
     if (error) throw error;
+    if (!data) {
+      return res.status(404).json({
+        success: false,
+        error: 'Producto no encontrado',
+      });
+    }
 
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    console.error("Error en getProductoById:", error.message);
-    res.status(500).json({ success: false, error: "Error al obtener producto" });
+    return res.status(200).json({ success: true, data });
+  } catch (err) {
+    console.error('Error en getProductoById:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Error al obtener producto',
+    });
   }
 };
+
 
 // ✅ Actualizar producto
 // export const updateProducto = async (req, res) => {
