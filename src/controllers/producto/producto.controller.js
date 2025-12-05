@@ -215,7 +215,6 @@ export const createProducto = async (req, res) => {
 
     // Usamos la descripción de la categoría como texto legacy
     const categoriaTexto = catRows.descripcion;
-
     // 🔹 Validar estado_id si viene
     if (estadoIdNum) {
       const { data: estadoRows, error: estadoError } = await supabase
