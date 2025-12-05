@@ -4,6 +4,118 @@ import { supabase } from '../../config/supabase.js';
 
 
 // ✅ Crear producto con categoria_id
+// export const createProducto = async (req, res) => {
+//   try {
+//     const {
+//       nombre,
+//       stock,
+//       precio,
+//       estado_id,
+//       descripcion,
+//       categoria_id, // 👈 viene del front
+//       costo,
+//     } = req.body;
+
+//     // 🔹 Validaciones mínimas
+//     if (!nombre) {
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "El nombre es obligatorio" });
+//     }
+//     if (precio == null || isNaN(Number(precio))) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "El precio es obligatorio y debe ser numérico",
+//       });
+//     }
+//     if (costo == null || isNaN(Number(costo))) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "El costo es obligatorio y debe ser numérico",
+//       });
+//     }
+//     if (!categoria_id) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "La categoría (categoria_id) es obligatoria",
+//       });
+//     }
+
+//     // 🔹 Normalizar valores numéricos
+//     const stockNum =
+//       stock === "" || stock == null || isNaN(Number(stock))
+//         ? 0
+//         : parseInt(stock, 10);
+//     const precioNum = parseFloat(precio);
+//     const costoNum = parseFloat(costo);
+//     const estadoIdNum =
+//       estado_id == null || estado_id === "" ? null : Number(estado_id);
+//     const categoriaIdNum = Number(categoria_id);
+
+//     // 🔹 Validar categoría
+//     const { data: catRows, error: catError } = await supabase
+//       .from("categoria_producto")
+//       .select("id, descripcion")
+//       .eq("id", categoriaIdNum)
+//       .maybeSingle();
+
+//     if (catError) throw catError;
+//     if (!catRows) {
+//       return res.status(400).json({
+//         success: false,
+//         error: `La categoria_id ${categoriaIdNum} no existe`,
+//       });
+//     }
+
+//     // Usamos la descripción de la categoría como texto legacy
+//     const categoriaTexto = catRows.descripcion;
+
+//     // 🔹 Validar estado_id si viene
+//     if (estadoIdNum) {
+//       const { data: estadoRows, error: estadoError } = await supabase
+//         .from("estado")
+//         .select("id")
+//         .eq("id", estadoIdNum);
+
+//       if (estadoError) throw estadoError;
+//       if (!estadoRows || estadoRows.length === 0) {
+//         return res.status(400).json({
+//           success: false,
+//           error: `El estado_id ${estadoIdNum} no existe`,
+//         });
+//       }
+//     }
+
+//     // ✅ Insertar producto
+//     const { data, error } = await supabase
+//       .from("producto")
+//       .insert([
+//         {
+//           nombre: nombre.trim(),
+//           stock: stockNum,
+//           precio: precioNum,
+//           costo: costoNum,
+//           estado_id: estadoIdNum,
+//           descripcion: (descripcion || "").trim(),
+//           categoria_id: categoriaIdNum,
+//           categoria: categoriaTexto, // 👈 mantenés compatibilidad con el campo viejo
+//         },
+//       ])
+//       .select()
+//       .single();
+
+//     if (error) throw error;
+
+//     return res.status(201).json({ success: true, data });
+//   } catch (error) {
+//     console.error("Error en createProducto:", error.message || error);
+//     return res
+//       .status(500)
+//       .json({ success: false, error: "Error al crear producto" });
+//   }
+// };
+
+// ✅ Crear producto con categoria_id + foto + subir_web + oferta
 export const createProducto = async (req, res) => {
   try {
     const {
@@ -14,6 +126,8 @@ export const createProducto = async (req, res) => {
       descripcion,
       categoria_id, // 👈 viene del front
       costo,
+      subir_web,    // 👈 nuevo campo
+      oferta,       // 👈 nuevo campo
     } = req.body;
 
     // 🔹 Validaciones mínimas
@@ -41,7 +155,17 @@ export const createProducto = async (req, res) => {
       });
     }
 
-    // 🔹 Normalizar valores numéricos
+    // 🔹 Validar oferta si viene
+    if (oferta !== undefined && oferta !== null && oferta !== "") {
+      if (isNaN(Number(oferta))) {
+        return res.status(400).json({
+          success: false,
+          error: "La oferta debe ser numérica (porcentaje de descuento)",
+        });
+      }
+    }
+
+    // 🔹 Normalizar valores
     const stockNum =
       stock === "" || stock == null || isNaN(Number(stock))
         ? 0
@@ -51,6 +175,9 @@ export const createProducto = async (req, res) => {
     const estadoIdNum =
       estado_id == null || estado_id === "" ? null : Number(estado_id);
     const categoriaIdNum = Number(categoria_id);
+
+    const subirWebBool = parseBoolean(subir_web);
+    const ofertaNum = parseNullableNumber(oferta); // puede quedar null
 
     // 🔹 Validar categoría
     const { data: catRows, error: catError } = await supabase
@@ -86,6 +213,38 @@ export const createProducto = async (req, res) => {
       }
     }
 
+    // 🔹 Subir imagen si viene archivo
+    let fotoUrl = null;
+
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || ".jpg";
+      const fileName = `producto_${Date.now()}_${Math.round(
+        Math.random() * 1e9
+      )}${ext}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(BUCKET_PRODUCTOS_FOTOS)
+        .upload(fileName, req.file.buffer, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: req.file.mimetype,
+        });
+
+      if (uploadError) {
+        console.error("Error subiendo imagen a Supabase:", uploadError);
+        return res.status(500).json({
+          success: false,
+          error: "Error al subir la imagen del producto",
+        });
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from(BUCKET_PRODUCTOS_FOTOS)
+        .getPublicUrl(uploadData.path);
+
+      fotoUrl = publicUrlData.publicUrl;
+    }
+
     // ✅ Insertar producto
     const { data, error } = await supabase
       .from("producto")
@@ -98,7 +257,10 @@ export const createProducto = async (req, res) => {
           estado_id: estadoIdNum,
           descripcion: (descripcion || "").trim(),
           categoria_id: categoriaIdNum,
-          categoria: categoriaTexto, // 👈 mantenés compatibilidad con el campo viejo
+          categoria: categoriaTexto,
+          foto_url: fotoUrl,      // 👈 NUEVO
+          subir_web: subirWebBool, // 👈 NUEVO
+          oferta: ofertaNum,       // 👈 NUEVO (puede ser null)
         },
       ])
       .select()
@@ -114,6 +276,316 @@ export const createProducto = async (req, res) => {
       .json({ success: false, error: "Error al crear producto" });
   }
 };
+
+// ✅ Actualizar producto con categoria_id
+// export const updateProducto = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     const {
+//       nombre,
+//       stock,
+//       precio,
+//       estado_id,
+//       descripcion,
+//       categoria_id,
+//       costo,
+//     } = req.body;
+
+//     if (!id) {
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "Falta el ID del producto" });
+//     }
+
+//     if (!nombre) {
+//       return res
+//         .status(400)
+//         .json({ success: false, error: "El nombre es obligatorio" });
+//     }
+//     if (precio == null || isNaN(Number(precio))) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "El precio es obligatorio y debe ser numérico",
+//       });
+//     }
+//     if (costo == null || isNaN(Number(costo))) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "El costo es obligatorio y debe ser numérico",
+//       });
+//     }
+//     if (!categoria_id) {
+//       return res.status(400).json({
+//         success: false,
+//         error: "La categoría (categoria_id) es obligatoria",
+//       });
+//     }
+
+//     const productoIdNum = Number(id);
+//     const stockNum =
+//       stock === "" || stock == null || isNaN(Number(stock))
+//         ? 0
+//         : parseInt(stock, 10);
+//     const precioNum = parseFloat(precio);
+//     const costoNum = parseFloat(costo);
+//     const estadoIdNum =
+//       estado_id == null || estado_id === "" ? null : Number(estado_id);
+//     const categoriaIdNum = Number(categoria_id);
+
+//     // 🔹 Validar categoría
+//     const { data: catRows, error: catError } = await supabase
+//       .from("categoria_producto")
+//       .select("id, descripcion")
+//       .eq("id", categoriaIdNum)
+//       .maybeSingle();
+
+//     if (catError) throw catError;
+//     if (!catRows) {
+//       return res.status(400).json({
+//         success: false,
+//         error: `La categoria_id ${categoriaIdNum} no existe`,
+//       });
+//     }
+
+//     const categoriaTexto = catRows.descripcion;
+
+//     // 🔹 Validar estado_id si viene
+//     if (estadoIdNum) {
+//       const { data: estadoRows, error: estadoError } = await supabase
+//         .from("estado")
+//         .select("id")
+//         .eq("id", estadoIdNum);
+
+//       if (estadoError) throw estadoError;
+//       if (!estadoRows || estadoRows.length === 0) {
+//         return res.status(400).json({
+//           success: false,
+//           error: `El estado_id ${estadoIdNum} no existe`,
+//         });
+//       }
+//     }
+
+//     // ✅ Actualizar producto
+//     const { data, error } = await supabase
+//       .from("producto")
+//       .update({
+//         nombre: nombre.trim(),
+//         stock: stockNum,
+//         precio: precioNum,
+//         costo: costoNum,
+//         estado_id: estadoIdNum,
+//         descripcion: (descripcion || "").trim(),
+//         categoria_id: categoriaIdNum,
+//         categoria: categoriaTexto,
+//       })
+//       .eq("id", productoIdNum)
+//       .select()
+//       .single();
+
+//     if (error) throw error;
+//     if (!data) {
+//       return res
+//         .status(404)
+//         .json({ success: false, error: "Producto no encontrado" });
+//     }
+
+//     return res.status(200).json({ success: true, data });
+//   } catch (error) {
+//     console.error("Error en updateProducto:", error.message || error);
+//     return res
+//       .status(500)
+//       .json({ success: false, error: "Error al actualizar producto" });
+//   }
+// };
+
+// ✅ Actualizar producto con categoria_id + foto + subir_web + oferta
+export const updateProducto = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      nombre,
+      stock,
+      precio,
+      estado_id,
+      descripcion,
+      categoria_id,
+      costo,
+      subir_web, // 👈 nuevo campo
+      oferta,    // 👈 nuevo campo
+    } = req.body;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Falta el ID del producto" });
+    }
+
+    if (!nombre) {
+      return res
+        .status(400)
+        .json({ success: false, error: "El nombre es obligatorio" });
+    }
+    if (precio == null || isNaN(Number(precio))) {
+      return res.status(400).json({
+        success: false,
+        error: "El precio es obligatorio y debe ser numérico",
+      });
+    }
+    if (costo == null || isNaN(Number(costo))) {
+      return res.status(400).json({
+        success: false,
+        error: "El costo es obligatorio y debe ser numérico",
+      });
+    }
+    if (!categoria_id) {
+      return res.status(400).json({
+        success: false,
+        error: "La categoría (categoria_id) es obligatoria",
+      });
+    }
+
+    // 🔹 Validar oferta si viene
+    if (oferta !== undefined && oferta !== null && oferta !== "") {
+      if (isNaN(Number(oferta))) {
+        return res.status(400).json({
+          success: false,
+          error: "La oferta debe ser numérica (porcentaje de descuento)",
+        });
+      }
+    }
+
+    const productoIdNum = Number(id);
+    const stockNum =
+      stock === "" || stock == null || isNaN(Number(stock))
+        ? 0
+        : parseInt(stock, 10);
+    const precioNum = parseFloat(precio);
+    const costoNum = parseFloat(costo);
+    const estadoIdNum =
+      estado_id == null || estado_id === "" ? null : Number(estado_id);
+    const categoriaIdNum = Number(categoria_id);
+
+    // 🔹 Validar categoría
+    const { data: catRows, error: catError } = await supabase
+      .from("categoria_producto")
+      .select("id, descripcion")
+      .eq("id", categoriaIdNum)
+      .maybeSingle();
+
+    if (catError) throw catError;
+    if (!catRows) {
+      return res.status(400).json({
+        success: false,
+        error: `La categoria_id ${categoriaIdNum} no existe`,
+      });
+    }
+
+    const categoriaTexto = catRows.descripcion;
+
+    // 🔹 Validar estado_id si viene
+    if (estadoIdNum) {
+      const { data: estadoRows, error: estadoError } = await supabase
+        .from("estado")
+        .select("id")
+        .eq("id", estadoIdNum);
+
+      if (estadoError) throw estadoError;
+      if (!estadoRows || estadoRows.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: `El estado_id ${estadoIdNum} no existe`,
+        });
+      }
+    }
+
+    // 🔹 Subir nueva imagen si viene archivo
+    let nuevaFotoUrl = null;
+
+    if (req.file) {
+      const ext = path.extname(req.file.originalname) || ".jpg";
+      const fileName = `producto_${productoIdNum}_${Date.now()}_${Math.round(
+        Math.random() * 1e9
+      )}${ext}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from(BUCKET_PRODUCTOS_FOTOS)
+        .upload(fileName, req.file.buffer, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: req.file.mimetype,
+        });
+
+      if (uploadError) {
+        console.error("Error subiendo imagen a Supabase:", uploadError);
+        return res.status(500).json({
+          success: false,
+          error: "Error al subir la imagen del producto",
+        });
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from(BUCKET_PRODUCTOS_FOTOS)
+        .getPublicUrl(uploadData.path);
+
+      nuevaFotoUrl = publicUrlData.publicUrl;
+    }
+
+    const subirWebBool =
+      subir_web !== undefined ? parseBoolean(subir_web) : undefined;
+    const ofertaNum =
+      oferta !== undefined ? parseNullableNumber(oferta) : undefined;
+
+    // 🔹 Construimos el payload de update
+    const updatePayload = {
+      nombre: nombre.trim(),
+      stock: stockNum,
+      precio: precioNum,
+      costo: costoNum,
+      estado_id: estadoIdNum,
+      descripcion: (descripcion || "").trim(),
+      categoria_id: categoriaIdNum,
+      categoria: categoriaTexto,
+    };
+
+    if (nuevaFotoUrl !== null) {
+      updatePayload.foto_url = nuevaFotoUrl; // 👈 solo si se subió nueva foto
+    }
+
+    if (subirWebBool !== undefined) {
+      updatePayload.subir_web = subirWebBool;
+    }
+
+    if (ofertaNum !== undefined) {
+      updatePayload.oferta = ofertaNum; // puede ser null si borrás la oferta
+    }
+
+    // ✅ Actualizar producto
+    const { data, error } = await supabase
+      .from("producto")
+      .update(updatePayload)
+      .eq("id", productoIdNum)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Producto no encontrado" });
+    }
+
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error("Error en updateProducto:", error.message || error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Error al actualizar producto" });
+  }
+};
+
+
 
 // ✅ Obtener todos los productos
 export const getProductos = async (req, res) => {
@@ -170,177 +642,7 @@ export const getProductoById = async (req, res) => {
 };
 
 
-// ✅ Actualizar producto
-// export const updateProducto = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { nombre, stock, precio, descripcion, estado_id, categoria, costo } = req.body;
 
-//     // 🔎 Validar existencia de producto
-//     const { data: existing, error: existingError } = await supabase
-//       .from("producto")
-//       .select("id")
-//       .eq("id", id)
-//       .single();
-
-//     if (existingError && existingError.code === "PGRST116") {
-//       return res.status(404).json({ success: false, error: "Producto no encontrado" });
-//     }
-//     if (existingError) throw existingError;
-
-//     // 🔎 Validar estado_id si viene
-//     if (estado_id) {
-//       const { data: estadoRows, error: estadoError } = await supabase
-//         .from("estado")
-//         .select("id")
-//         .eq("id", estado_id);
-
-//       if (estadoError) throw estadoError;
-//       if (!estadoRows || estadoRows.length === 0) {
-//         return res.status(400).json({ success: false, error: `El estado_id ${estado_id} no existe` });
-//       }
-//     }
-
-//     // ✅ Actualizar
-//     const { data, error } = await supabase
-//       .from("producto")
-//       .update({ nombre, stock, precio, descripcion, estado_id, categoria, costo })
-//       .eq("id", id)
-//       .select()
-//       .single();
-
-//     if (error) throw error;
-
-//     res.status(200).json({ success: true, data });
-//   } catch (error) {
-//     console.error("Error en updateProducto:", error.message);
-//     res.status(500).json({ success: false, error: "Error al actualizar producto" });
-//   }
-// };
-
-// controllers/producto.controller.js
-
-// ✅ Actualizar producto con categoria_id
-export const updateProducto = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const {
-      nombre,
-      stock,
-      precio,
-      estado_id,
-      descripcion,
-      categoria_id,
-      costo,
-    } = req.body;
-
-    if (!id) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Falta el ID del producto" });
-    }
-
-    if (!nombre) {
-      return res
-        .status(400)
-        .json({ success: false, error: "El nombre es obligatorio" });
-    }
-    if (precio == null || isNaN(Number(precio))) {
-      return res.status(400).json({
-        success: false,
-        error: "El precio es obligatorio y debe ser numérico",
-      });
-    }
-    if (costo == null || isNaN(Number(costo))) {
-      return res.status(400).json({
-        success: false,
-        error: "El costo es obligatorio y debe ser numérico",
-      });
-    }
-    if (!categoria_id) {
-      return res.status(400).json({
-        success: false,
-        error: "La categoría (categoria_id) es obligatoria",
-      });
-    }
-
-    const productoIdNum = Number(id);
-    const stockNum =
-      stock === "" || stock == null || isNaN(Number(stock))
-        ? 0
-        : parseInt(stock, 10);
-    const precioNum = parseFloat(precio);
-    const costoNum = parseFloat(costo);
-    const estadoIdNum =
-      estado_id == null || estado_id === "" ? null : Number(estado_id);
-    const categoriaIdNum = Number(categoria_id);
-
-    // 🔹 Validar categoría
-    const { data: catRows, error: catError } = await supabase
-      .from("categoria_producto")
-      .select("id, descripcion")
-      .eq("id", categoriaIdNum)
-      .maybeSingle();
-
-    if (catError) throw catError;
-    if (!catRows) {
-      return res.status(400).json({
-        success: false,
-        error: `La categoria_id ${categoriaIdNum} no existe`,
-      });
-    }
-
-    const categoriaTexto = catRows.descripcion;
-
-    // 🔹 Validar estado_id si viene
-    if (estadoIdNum) {
-      const { data: estadoRows, error: estadoError } = await supabase
-        .from("estado")
-        .select("id")
-        .eq("id", estadoIdNum);
-
-      if (estadoError) throw estadoError;
-      if (!estadoRows || estadoRows.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: `El estado_id ${estadoIdNum} no existe`,
-        });
-      }
-    }
-
-    // ✅ Actualizar producto
-    const { data, error } = await supabase
-      .from("producto")
-      .update({
-        nombre: nombre.trim(),
-        stock: stockNum,
-        precio: precioNum,
-        costo: costoNum,
-        estado_id: estadoIdNum,
-        descripcion: (descripcion || "").trim(),
-        categoria_id: categoriaIdNum,
-        categoria: categoriaTexto,
-      })
-      .eq("id", productoIdNum)
-      .select()
-      .single();
-
-    if (error) throw error;
-    if (!data) {
-      return res
-        .status(404)
-        .json({ success: false, error: "Producto no encontrado" });
-    }
-
-    return res.status(200).json({ success: true, data });
-  } catch (error) {
-    console.error("Error en updateProducto:", error.message || error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Error al actualizar producto" });
-  }
-};
 
 
 // ✅ Eliminar producto
