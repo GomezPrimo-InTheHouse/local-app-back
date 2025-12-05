@@ -13,7 +13,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL
 
 
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const testConnection = async () => {
   const { data, error } = await supabase.from("producto").select("*").limit(1);
