@@ -2,6 +2,25 @@
 import { supabase } from '../../config/supabase.js';
 
 
+const BUCKET_PRODUCTOS_FOTOS =
+  process.env.SUPABASE_PRODUCTOS_BUCKET || "productos-fotos";
+
+const parseBoolean = (value) => {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (typeof value === "string") {
+    const v = value.toLowerCase();
+    return ["true", "1", "si", "sí", "on"].includes(v);
+  }
+  return false;
+};
+
+const parseNullableNumber = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  const num = Number(value);
+  return Number.isNaN(num) ? null : num;
+};
 
 // ✅ Crear producto con categoria_id
 // export const createProducto = async (req, res) => {
