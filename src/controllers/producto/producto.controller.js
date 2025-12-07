@@ -148,6 +148,7 @@ export const createProducto = async (req, res) => {
       costo,
       subir_web,    // 👈 nuevo campo
       oferta,       // 👈 nuevo campo
+      descripcion_web, // 👈 nuevo campo
     } = req.body;
 
     // 🔹 Validaciones mínimas
@@ -280,6 +281,7 @@ export const createProducto = async (req, res) => {
           foto_url: fotoUrl,      // 👈 NUEVO
           subir_web: subirWebBool, // 👈 NUEVO
           oferta: ofertaNum,       // 👈 NUEVO (puede ser null)
+          descripcion_web: descripcion_web || null, // 👈 NUEV O
         },
       ])
       .select()
@@ -433,6 +435,7 @@ export const updateProducto = async (req, res) => {
       costo,
       subir_web, // 👈 nuevo campo
       oferta,    // 👈 nuevo campo
+      descripcion_web, // 👈 nuevo campo
     } = req.body;
 
     if (!id) {
@@ -566,6 +569,7 @@ export const updateProducto = async (req, res) => {
       descripcion: (descripcion || "").trim(),
       categoria_id: categoriaIdNum,
       categoria: categoriaTexto,
+      descripcion_web: descripcion_web || null, // 👈 NUEVO
     };
 
     if (nuevaFotoUrl !== null) {
