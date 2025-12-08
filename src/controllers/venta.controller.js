@@ -318,7 +318,7 @@
 import { supabase } from "../config/supabase.js";
 import { updateProducto } from "./producto/producto.controller.js";
 import { pool } from '../config/supabaseAuthModule.js'; //sirve para hacer queries SQL crudas si es necesario
-import axios from "axios";
+
 
 // ✅ Crear una nueva venta
 // export const createVenta = async (req, res) => {

@@ -8,9 +8,7 @@ const { sign, verify } = jwt;
 
 // ## Roles y Permisos
 
-// - **Asistentes**: Acceso limitado a inscripciones y consulta de programación
 // - **Organizadores**: Acceso completo a gestión de eventos y programación
-// - **Expositores**: Acceso a sus presentaciones y perfil público
 // - **Administradores**: Acceso total al sistema
 
 export const autorizacionDeRoles = (...rolesPermitidos) => {

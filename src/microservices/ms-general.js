@@ -70,39 +70,6 @@ app.use((req, res, next) => {
   }
   return next();
 });
-// app.use((req, res, next) => {
-//   const origin = req.headers.origin;
-//   const allowed = isHostAllowed(origin);
-
-//   // Siempre variar por Origin para caches
-//   res.setHeader("Vary", "Origin");
-
-//   if (origin && allowed) {
-//     res.setHeader("Access-Control-Allow-Origin", origin); // debe ser exacto si credentials=true
-//   }
-//   // si usás JWT via header, credentials puede ser false. Si algún día usás cookies, ponelo true.
-//   res.setHeader("Access-Control-Allow-Credentials", "false");
-
-//   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-
-//   // reflejar lo que pide el preflight o set por defecto
-//   const reqHeaders = req.headers["access-control-request-headers"];
-//   res.setHeader(
-//     "Access-Control-Allow-Headers",
-//     reqHeaders || "Content-Type, Authorization, ngrok-skip-browser-warning"
-//   );
-
-//   if (req.method === "OPTIONS") {
-//     // responder SIEMPRE el preflight antes que cualquier otro middleware
-//     if (origin && !allowed) return res.sendStatus(403);
-//     return res.sendStatus(204);
-//   }
-
-//   // si el origin no está permitido y existe, cortamos acá
-//   if (origin && !allowed) return res.status(403).json({ error: "CORS: origin no permitido" });
-
-//   next();
-// });
 
 // (si usás cookies/sesión detrás de ngrok/proxy)
 app.set("trust proxy", 1);
