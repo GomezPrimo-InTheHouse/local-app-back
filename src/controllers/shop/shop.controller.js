@@ -1,5 +1,6 @@
 import {supabase} from "../../config/supabase.js";
-import transporter from "../../config/mailer.js";
+import resend from "../../config/mailer.js";
+
 
 // =========================================================
 // HELPER: Crear o recuperar cupón de bienvenida
@@ -530,7 +531,7 @@ export const crearVentaWeb = async (req, res) => {
 
 const sendCouponEmail = async (cupon, cliente) => {
   const email = cliente.email || cupon.email_destino;
-  if (!email) return { sent: false };
+  if (!email) return { sent: false, reason: "NO_EMAIL" };
 
   const descuentoTexto =
     cupon.descuento_porcentaje != null
@@ -539,7 +540,7 @@ const sendCouponEmail = async (cupon, cliente) => {
       ? `$${cupon.descuento_monto} de descuento`
       : "un descuento especial";
 
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+  const from = process.env.EMAIL_FROM || "JG Informática <no-reply@resend.dev>";
 
   const html = `
   <!DOCTYPE html>
@@ -616,14 +617,17 @@ const sendCouponEmail = async (cupon, cliente) => {
   </html>
   `;
 
-  const mailOptions = {
+  const { data, error } = await resend.emails.send({
     from,
     to: email,
     subject: "🎁 Tu cupón de bienvenida – JG Informática",
     html,
-  };
+  });
 
-  await transporter.sendMail(mailOptions);
+  if (error) {
+    console.error("Error enviando email con Resend:", error);
+    return { sent: false, reason: "RESEND_ERROR" };
+  }
 
   const ahoraISO = new Date().toISOString();
 
@@ -637,11 +641,15 @@ const sendCouponEmail = async (cupon, cliente) => {
     .eq("id", cupon.id);
 
   if (updateError) {
-    console.error("Error actualizando cupon_cliente tras envío de email:", updateError);
+    console.error(
+      "Error actualizando cupon_cliente tras envío de email:",
+      updateError
+    );
   }
 
-  return { sent: true };
+  return { sent: true, data };
 };
+
 
 // =========================================================
 // REGISTRAR SESIÓN DE CLIENTE (SHOP)
