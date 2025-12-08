@@ -14,7 +14,7 @@ import EstadisticasRoute from "../routes/estadisticas.routes.js";
 import ProductoRoute from "../routes/producto/producto.route.js";
 import CategoriaProductoRoute from "../routes/producto/categoriaProducto.route.js";
 import VentaRoute from "../routes/venta.route.js";
-
+import ShopRoute from "../routes/shop/shop.route.js";
 dotenv.config();
 
 const app = express();
@@ -90,6 +90,8 @@ app.use("/estadisticas", EstadisticasRoute);
 app.use("/producto", ProductoRoute);
 app.use("/venta", VentaRoute);
 app.use("/categoria-producto", CategoriaProductoRoute);
+// 👇 NUEVO: RUTAS DEL SHOP
+app.use("/shop", ShopRoute);
 
 // healthcheck
 app.get("/health", (_req, res) => {

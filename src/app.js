@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 const services = [
   { name: 'ms-general.js', port: 7001 },
   { name: 'ms-twilio.js',  port: 7002 },
-  { name: 'ms-shop.js',    port: 7003 },
+  // { name: 'ms-shop.js',    port: 7003 },
 ];
 
 services.forEach(service => {
