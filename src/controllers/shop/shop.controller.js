@@ -255,6 +255,280 @@ export const validarCupon = async (req, res) => {
 };
 
 
+// export const crearVentaWeb = async (req, res) => {
+//   try {
+//     const {
+//       cliente_id,
+//       items,
+//       monto_abonado,
+//       estado_nombre,
+//       codigo_cupon,          // opcional
+//     } = req.body;
+
+//     if (!cliente_id) {
+//       return res.status(400).json({ error: "cliente_id es requerido" });
+//     }
+
+//     if (!Array.isArray(items) || items.length === 0) {
+//       return res.status(400).json({
+//         error: "items debe ser un array con al menos un producto",
+//       });
+//     }
+
+//     // 1) Traer info de productos (precio)
+//     const productoIds = items.map((it) => it.producto_id);
+
+//     const { data: productos, error: prodError } = await supabase
+//       .from("producto")
+//       .select("id, precio")
+//       .in("id", productoIds);
+
+//     if (prodError) throw prodError;
+
+//     if (!productos || productos.length !== productoIds.length) {
+//       return res.status(400).json({
+//         error:
+//           "No se pudieron encontrar todos los productos indicados. Verificar IDs.",
+//       });
+//     }
+
+//     const mapPrecio = new Map();
+//     for (const p of productos) {
+//       mapPrecio.set(p.id, Number(p.precio));
+//     }
+
+//     // 2) Calcular subtotales y total bruto (antes de cupones)
+//     const detalles = items.map((it) => {
+//       const precio_unitario = mapPrecio.get(it.producto_id);
+//       const cantidad = Number(it.cantidad || 0);
+//       const subtotal = precio_unitario * cantidad;
+//       return {
+//         producto_id: it.producto_id,
+//         cantidad,
+//         precio_unitario,
+//         subtotal,
+//       };
+//     });
+
+//     const totalBruto = detalles.reduce((acc, d) => acc + d.subtotal, 0);
+
+//     // 3) Aplicar cupón si viene código
+//     let descuentoMonto = 0;
+//     let totalFinal = totalBruto;
+//     let cuponAplicado = null;
+
+//     if (codigo_cupon) {
+//       const ahoraISO = new Date().toISOString();
+
+//       const { data: cupon, error: cuponError } = await supabase
+//         .from("cupon_cliente")
+//         .select(
+//           `
+//           id,
+//           codigo,
+//           cliente_id,
+//           descuento_porcentaje,
+//           descuento_monto,
+//           valido_desde,
+//           valido_hasta,
+//           uso_maximo,
+//           usos_realizados,
+//           estado_id
+//         `
+//         )
+//         .eq("cliente_id", cliente_id)
+//         .eq("codigo", codigo_cupon)
+//         .maybeSingle();
+
+//       if (cuponError) throw cuponError;
+
+//       if (!cupon) {
+//         return res.status(400).json({
+//           error: "Cupón no válido para este cliente",
+//         });
+//       }
+
+//       // Verificar estado ACTIVO
+//       const { data: estadoCupon, error: estError } = await supabase
+//         .from("estado")
+//         .select("id, nombre")
+//         .eq("id", cupon.estado_id)
+//         .eq("ambito", "cupon")
+//         .maybeSingle();
+
+//       if (estError) throw estError;
+
+//       if (!estadoCupon || estadoCupon.nombre !== "ACTIVO") {
+//         return res.status(400).json({
+//           error: "El cupón no está activo",
+//         });
+//       }
+
+//       // Verificar fechas y usos
+//       if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
+//         return res.status(400).json({ error: "El cupón aún no está vigente" });
+//       }
+
+//       if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
+//         return res.status(400).json({ error: "El cupón está vencido" });
+//       }
+
+//       if (
+//         cupon.uso_maximo != null &&
+//         cupon.usos_realizados != null &&
+//         cupon.usos_realizados >= cupon.uso_maximo
+//       ) {
+//         return res.status(400).json({
+//           error: "El cupón ya fue utilizado el máximo de veces",
+//         });
+//       }
+
+//       // Calcular descuento
+//       if (cupon.descuento_monto != null) {
+//         descuentoMonto = Number(cupon.descuento_monto);
+//       } else if (cupon.descuento_porcentaje != null) {
+//         descuentoMonto = totalBruto * (cupon.descuento_porcentaje / 100);
+//       }
+
+//       if (descuentoMonto < 0) descuentoMonto = 0;
+//       if (descuentoMonto > totalBruto) descuentoMonto = totalBruto;
+
+//       totalFinal = totalBruto - descuentoMonto;
+//       cuponAplicado = cupon;
+//     }
+
+//     // 4) Determinar estado venta
+//     const estadoNombreFinal = estado_nombre || "PENDIENTE_PAGO";
+
+//     const { data: estadoVenta, error: estadoError } = await supabase
+//       .from("estado")
+//       .select("id")
+//       .eq("nombre", estadoNombreFinal)
+//       .eq("ambito", "venta")
+//       .maybeSingle();
+
+//     if (estadoError) throw estadoError;
+
+//     if (!estadoVenta) {
+//       return res.status(500).json({
+//         error: `No se encontró estado '${estadoNombreFinal}' para ambito 'venta'.`,
+//       });
+//     }
+
+//     const montoAbonadoNum =
+//       monto_abonado != null ? Number(monto_abonado) : 0;
+//     const saldo = totalFinal - montoAbonadoNum;
+
+//     // 5) Insertar venta
+//     const { data: ventaInsert, error: ventaError } = await supabase
+//       .from("venta")
+//       .insert([
+//         {
+//           fecha: new Date().toISOString(),
+//           total: totalFinal,
+//           cliente_id,
+//           monto_abonado: montoAbonadoNum,
+//           saldo,
+//           canal: "web_shop",
+//           estado_id: estadoVenta.id,
+//         },
+//       ])
+//       .select(
+//         `
+//         id,
+//         fecha,
+//         total,
+//         cliente_id,
+//         monto_abonado,
+//         saldo,
+//         canal,
+//         estado_id
+//       `
+//       )
+//       .single();
+
+//     if (ventaError) throw ventaError;
+
+//     const ventaId = ventaInsert.id;
+
+//     // 6) Insertar detalle_venta
+//     const detallesConVenta = detalles.map((d) => ({
+//       venta_id: ventaId,
+//       producto_id: d.producto_id,
+//       cantidad: d.cantidad,
+//       precio_unitario: d.precio_unitario,
+//       subtotal: d.subtotal,
+//     }));
+
+//     const { data: detallesInsert, error: detalleError } = await supabase
+//       .from("detalle_venta")
+//       .insert(detallesConVenta)
+//       .select(
+//         `
+//         id,
+//         venta_id,
+//         producto_id,
+//         cantidad,
+//         precio_unitario,
+//         subtotal
+//       `
+//       );
+
+//     if (detalleError) throw detalleError;
+
+//     // 7) Si hubo cupón, marcarlo como usado (incrementar usos, y si llegó al max → USADO)
+//     if (cuponAplicado) {
+//       const usosNuevos = (cuponAplicado.usos_realizados || 0) + 1;
+//       let nuevoEstadoId = cuponAplicado.estado_id;
+
+//       if (
+//         cuponAplicado.uso_maximo != null &&
+//         usosNuevos >= cuponAplicado.uso_maximo
+//       ) {
+//         // buscar estado USADO
+//         const { data: estadoUsado, error: estUsadoErr } = await supabase
+//           .from("estado")
+//           .select("id")
+//           .eq("nombre", "USADO")
+//           .eq("ambito", "cupon")
+//           .maybeSingle();
+
+//         if (!estUsadoErr && estadoUsado) {
+//           nuevoEstadoId = estadoUsado.id;
+//         }
+//       }
+
+//       const { error: updCuponErr } = await supabase
+//         .from("cupon_cliente")
+//         .update({
+//           usos_realizados: usosNuevos,
+//           estado_id: nuevoEstadoId,
+//         })
+//         .eq("id", cuponAplicado.id);
+
+//       if (updCuponErr) {
+//         console.error("Error actualizando cupón tras la venta:", updCuponErr);
+//       }
+//     }
+
+//     return res.status(201).json({
+//       message: "Venta web creada correctamente",
+//       venta: ventaInsert,
+//       detalles: detallesInsert,
+//       total_bruto: totalBruto,
+//       descuento: descuentoMonto,
+//       total_final: totalFinal,
+//       codigo_cupon: codigo_cupon || null,
+//     });
+//   } catch (err) {
+//     console.error("Error en crearVentaWeb:", err);
+//     return res.status(500).json({
+//       error: "Error interno al crear venta web",
+//       detail: err.message,
+//     });
+//   }
+// };
+
 export const crearVentaWeb = async (req, res) => {
   try {
     const {
@@ -262,7 +536,7 @@ export const crearVentaWeb = async (req, res) => {
       items,
       monto_abonado,
       estado_nombre,
-      codigo_cupon,          // opcional
+      codigo_cupon, // opcional
     } = req.body;
 
     if (!cliente_id) {
@@ -316,6 +590,7 @@ export const crearVentaWeb = async (req, res) => {
     let descuentoMonto = 0;
     let totalFinal = totalBruto;
     let cuponAplicado = null;
+    let cuponMotivoNoAplicado = null;
 
     if (codigo_cupon) {
       const ahoraISO = new Date().toISOString();
@@ -342,13 +617,14 @@ export const crearVentaWeb = async (req, res) => {
 
       if (cuponError) throw cuponError;
 
+      // Si el cupón no existe para ese cliente → error (código inventado / mal tipeado)
       if (!cupon) {
         return res.status(400).json({
           error: "Cupón no válido para este cliente",
         });
       }
 
-      // Verificar estado ACTIVO
+      // Verificar estado (ACTIVO) para ambito 'cupon'
       const { data: estadoCupon, error: estError } = await supabase
         .from("estado")
         .select("id, nombre")
@@ -358,43 +634,33 @@ export const crearVentaWeb = async (req, res) => {
 
       if (estError) throw estError;
 
+      // Si NO está activo → NO frenamos la compra, solo no aplicamos el cupón
       if (!estadoCupon || estadoCupon.nombre !== "ACTIVO") {
-        return res.status(400).json({
-          error: "El cupón no está activo",
-        });
-      }
-
-      // Verificar fechas y usos
-      if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
-        return res.status(400).json({ error: "El cupón aún no está vigente" });
-      }
-
-      if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
-        return res.status(400).json({ error: "El cupón está vencido" });
-      }
-
-      if (
+        cuponMotivoNoAplicado = "El cupón no está activo (ya usado o deshabilitado)";
+      } else if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
+        cuponMotivoNoAplicado = "El cupón aún no está vigente";
+      } else if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
+        cuponMotivoNoAplicado = "El cupón está vencido";
+      } else if (
         cupon.uso_maximo != null &&
         cupon.usos_realizados != null &&
         cupon.usos_realizados >= cupon.uso_maximo
       ) {
-        return res.status(400).json({
-          error: "El cupón ya fue utilizado el máximo de veces",
-        });
+        cuponMotivoNoAplicado = "El cupón ya fue utilizado el máximo de veces";
+      } else {
+        // ✅ Todas las validaciones OK → aplicamos el cupón
+        if (cupon.descuento_monto != null) {
+          descuentoMonto = Number(cupon.descuento_monto);
+        } else if (cupon.descuento_porcentaje != null) {
+          descuentoMonto = totalBruto * (cupon.descuento_porcentaje / 100);
+        }
+
+        if (descuentoMonto < 0) descuentoMonto = 0;
+        if (descuentoMonto > totalBruto) descuentoMonto = totalBruto;
+
+        totalFinal = totalBruto - descuentoMonto;
+        cuponAplicado = cupon;
       }
-
-      // Calcular descuento
-      if (cupon.descuento_monto != null) {
-        descuentoMonto = Number(cupon.descuento_monto);
-      } else if (cupon.descuento_porcentaje != null) {
-        descuentoMonto = totalBruto * (cupon.descuento_porcentaje / 100);
-      }
-
-      if (descuentoMonto < 0) descuentoMonto = 0;
-      if (descuentoMonto > totalBruto) descuentoMonto = totalBruto;
-
-      totalFinal = totalBruto - descuentoMonto;
-      cuponAplicado = cupon;
     }
 
     // 4) Determinar estado venta
@@ -476,7 +742,7 @@ export const crearVentaWeb = async (req, res) => {
 
     if (detalleError) throw detalleError;
 
-    // 7) Si hubo cupón, marcarlo como usado (incrementar usos, y si llegó al max → USADO)
+    // 7) Si hubo cupón aplicado, marcarlo como usado (incrementar usos, y si llegó al max → USADO)
     if (cuponAplicado) {
       const usosNuevos = (cuponAplicado.usos_realizados || 0) + 1;
       let nuevoEstadoId = cuponAplicado.estado_id;
@@ -518,7 +784,9 @@ export const crearVentaWeb = async (req, res) => {
       total_bruto: totalBruto,
       descuento: descuentoMonto,
       total_final: totalFinal,
-      codigo_cupon: codigo_cupon || null,
+      codigo_cupon: cuponAplicado ? codigo_cupon : null,
+      cupon_aplicado: !!cuponAplicado,
+      cupon_motivo_no_aplicado: cuponMotivoNoAplicado,
     });
   } catch (err) {
     console.error("Error en crearVentaWeb:", err);
@@ -528,6 +796,7 @@ export const crearVentaWeb = async (req, res) => {
     });
   }
 };
+
 
 const sendCouponEmail = async (cupon, cliente) => {
   const email = cliente.email || cupon.email_destino;
@@ -860,5 +1129,27 @@ export const obtenerTopVistos = async (req, res) => {
       error: "Error interno al obtener top productos vistos",
       detail: err.message,
     });
+  }
+};
+
+
+// SOLO PARA TEST – ELIMINAR DESPUÉS
+export const testResend = async (req, res) => {
+  try {
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM,
+      to: "julian1995ag@gmail.com",
+      subject: "Test Resend",
+      html: "<p>Si ves esto, Resend funciona.</p>",
+    });
+
+    if (error) {
+      console.error("Resend test error:", error);
+      return res.status(500).json({ error });
+    }
+
+    return res.status(200).json({ data });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 };
