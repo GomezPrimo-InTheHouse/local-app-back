@@ -186,16 +186,16 @@ export const loginCliente = async (req, res) => {
       clienteActualizado.email
     );
 
-    // Enviar email si hay dirección
-    let emailSent = false;
-    if (clienteActualizado.email) {
-      try {
-        const sendResult = await sendCouponEmail(cupon, clienteActualizado);
-        emailSent = sendResult.sent;
-      } catch (e) {
-        console.error("Error enviando email:", e);
-      }
-    }
+    // // Enviar email si hay dirección
+    // let emailSent = false;
+    // if (clienteActualizado.email) {
+    //   try {
+    //     const sendResult = await sendCouponEmail(cupon, clienteActualizado);
+    //     emailSent = sendResult.sent;
+    //   } catch (e) {
+    //     console.error("Error enviando email:", e);
+    //   }
+    // }
 
     return res.status(200).json({
       message: "Login exitoso",
