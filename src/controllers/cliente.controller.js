@@ -163,6 +163,7 @@ export const createCliente = async (req, res) => {
       celular,
       celular_contacto,
       foto_url: fotoUrlBody, // por si te mandan un URL directo
+      tipo_cliente
     } = req.body;
 
     if (!dni) {
@@ -214,6 +215,7 @@ export const createCliente = async (req, res) => {
         _celular: celular ?? null,
         _celular_contacto: celular_contacto ?? null,
         _foto_url: fotoUrlFinal,
+        _tipo_cliente: tipo_cliente ?? null
       }
     );
 
