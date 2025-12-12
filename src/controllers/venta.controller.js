@@ -423,16 +423,63 @@ export const createVenta = async (req, res) => {
 
 // ✅ Obtener todas las ventas con detalles where estado_id = 19
 // ✅ Obtener todas las ventas con detalles where estado_id = 19, incluyendo costo del producto
+// export const getVentas = async (req, res) => {
+//   try {
+//     const { data, error } = await supabase
+//       .from("venta")
+//       .select(`
+//         id,
+//         fecha,
+//         total,
+//         monto_abonado,
+//         saldo,
+//         canal,
+//         cliente:cliente_id (
+//           id,
+//           nombre,
+//           apellido
+//         ),
+//         detalle_venta (
+//           id,
+//           producto_id,
+//           cantidad,
+//           precio_unitario,
+//           subtotal,
+//           producto:producto_id (
+//             id,
+//             nombre,
+//             costo
+//           )
+//         )
+//       `)
+//       .eq("estado_id", 19) // solo activas
+//       .order("fecha", { ascending: false });
+
+//     if (error) throw error;
+
+//     res.status(200).json({ success: true, data });
+//   } catch (error) {
+//     console.error("Error en getVentas:", error.message);
+//     res.status(500).json({ success: false, error: "Error al obtener ventas" });
+//   }
+// };
+
+//nuevo getVentas con filtro por canal de venta
+// controllers/ventaController.js (o donde lo tengas definido)
 export const getVentas = async (req, res) => {
   try {
-    const { data, error } = await supabase
+    const { canal } = req.query; // opcional: "local", "web_shop" o "todos"
+
+    let query = supabase
       .from("venta")
-      .select(`
+      .select(
+        `
         id,
         fecha,
         total,
         monto_abonado,
         saldo,
+        canal,
         cliente:cliente_id (
           id,
           nombre,
@@ -450,9 +497,17 @@ export const getVentas = async (req, res) => {
             costo
           )
         )
-      `)
+      `
+      )
       .eq("estado_id", 19) // solo activas
       .order("fecha", { ascending: false });
+
+    // ✅ Si viene canal y NO es "todos", filtramos
+    if (canal && canal !== "todos") {
+      query = query.eq("canal", canal);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
