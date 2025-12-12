@@ -1,10 +1,92 @@
 import { supabase } from "../../config/supabase.js";
 import resend from "../../config/mailer.js";
 
+// =========================================================
+// CONSTANTES: Tipos/Descripción de cupones (evitar typos)
+// =========================================================
+const CUPON_INVITADO_DESC = "CUPON_INVITADO_24H";
+const CUPON_SEMANAL_DESC = "Cupón semanal 5%";
+// =========================================================
+// HELPER: Cupón INVITADO (única vez) - 5% por 24hs
+// =========================================================
+const getOrCreateGuest24hCoupon = async (clienteId, emailDestino) => {
+    // 1) estado ACTIVO (ambito cupon)
+    const { data: estadoActivo, error: estadoError } = await supabase
+        .from("estado")
+        .select("id")
+        .eq("nombre", "ACTIVO")
+        .eq("ambito", "cupon")
+        .maybeSingle();
 
-// =========================================================
-// HELPER: Crear o recuperar cupón de bienvenida
-// =========================================================
+    if (estadoError) throw estadoError;
+    if (!estadoActivo) throw new Error("No existe estado ACTIVO para cupon.");
+
+    const estadoId = estadoActivo.id;
+
+    // 2) Si alguna vez se creó este cupón para el cliente → NO volver a darlo
+    //    (única vez, aunque esté vencido o usado)
+    const { data: cuponHistorico, error: histErr } = await supabase
+        .from("cupon_cliente")
+        .select("*")
+        .eq("cliente_id", clienteId)
+        .eq("descripcion", CUPON_INVITADO_DESC)
+        .order("creado_en", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (histErr) throw histErr;
+
+    if (cuponHistorico) {
+        // Si todavía está vigente y activo, lo devolvemos para que el front lo muestre
+        const ahoraISO = new Date().toISOString();
+        const vigente =
+            cuponHistorico.estado_id === estadoId &&
+            (!cuponHistorico.valido_desde || cuponHistorico.valido_desde <= ahoraISO) &&
+            (!cuponHistorico.valido_hasta || cuponHistorico.valido_hasta >= ahoraISO) &&
+            (cuponHistorico.usos_realizados ?? 0) < (cuponHistorico.uso_maximo ?? 1);
+
+        return {
+            cupon: vigente ? cuponHistorico : null,
+            created: false,
+            blocked: true,
+            reason: "CUPON_INVITADO_YA_OTORGADO",
+        };
+    }
+
+    // 3) Crear nuevo cupón 24hs
+    const ahora = new Date();
+    const hasta = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
+
+    const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const codigo = `JG-${randomPart}`;
+
+    const nuevoCupon = {
+        codigo,
+        descripcion: CUPON_INVITADO_DESC,
+        cliente_id: clienteId,
+        email_destino: emailDestino || null,
+        descuento_porcentaje: 5,
+        descuento_monto: null,
+        valido_desde: ahora.toISOString(),
+        valido_hasta: hasta.toISOString(),
+        uso_maximo: 1,
+        usos_realizados: 0,
+        enviado_email: false,
+        fecha_envio_email: null,
+        estado_id: estadoId,
+    };
+
+    const { data: insert, error: insErr } = await supabase
+        .from("cupon_cliente")
+        .insert([nuevoCupon])
+        .select("*")
+        .single();
+
+    if (insErr) throw insErr;
+
+    return { cupon: insert, created: true, blocked: false, reason: null };
+};
+
 // =========================================================
 // HELPER: Crear o recuperar cupón semanal (1 por semana) - 5%
 // =========================================================
@@ -30,6 +112,7 @@ const getOrCreateWeeklyCoupon = async (clienteId, emailDestino) => {
         .from("cupon_cliente")
         .select("*")
         .eq("cliente_id", clienteId)
+        .eq("descripcion", CUPON_SEMANAL_DESC)
         .eq("estado_id", estadoId)
         .lte("valido_desde", ahoraISO)
         .gte("valido_hasta", ahoraISO)
@@ -42,13 +125,17 @@ const getOrCreateWeeklyCoupon = async (clienteId, emailDestino) => {
 
     // 3) Regla "1 por semana": buscar el ÚLTIMO cupón creado (cualquier estado)
     //    y si fue creado hace menos de 7 días, NO creamos otro.
+    // 3) Regla "1 por semana": buscar el ÚLTIMO CUPÓN SEMANAL creado
+    //    y si fue creado hace menos de 7 días, NO creamos otro.
     const { data: ultimoCupon, error: ultimoErr } = await supabase
         .from("cupon_cliente")
         .select("id, valido_desde, valido_hasta, creado_en, estado_id")
         .eq("cliente_id", clienteId)
+        .eq("descripcion", CUPON_SEMANAL_DESC) // ✅ FILTRO CLAVE
         .order("creado_en", { ascending: false })
         .limit(1)
         .maybeSingle();
+
 
     if (ultimoErr) throw ultimoErr;
 
@@ -76,7 +163,7 @@ const getOrCreateWeeklyCoupon = async (clienteId, emailDestino) => {
 
     const nuevoCupon = {
         codigo,
-        descripcion: "Cupón semanal 5%",
+        descripcion: CUPON_SEMANAL_DESC,
         cliente_id: clienteId,
         email_destino: emailDestino || null,
         descuento_porcentaje: 5,
@@ -174,102 +261,152 @@ export const obtenerCuponesCliente = async (req, res) => {
 
 
 // =========================================================
-// LOGIN CLIENTE + CUPÓN + EMAIL
+// LOGIN CLIENTE (SHOP)
+// - Si no existe por DNI → crear INVITADO (canal_alta = web_shop)
+// - Si existe canal_alta = local → cupón semanal 5%
+// - Si existe canal_alta = web_shop → cupón invitado única vez 24hs (5%)
+// Devuelve siempre cliente.id
 // =========================================================
 export const loginCliente = async (req, res) => {
     try {
         const { nombre, apellido, dni, email } = req.body;
 
         if (!nombre || !apellido || !dni) {
-            return res.status(400).json({ error: "Faltan datos" });
+            return res.status(400).json({
+                error: "nombre, apellido y dni son requeridos",
+            });
         }
 
-        const { data: cliente, error } = await supabase
+        const dniNorm = String(dni).trim();
+        const nombreNorm = String(nombre).trim();
+        const apellidoNorm = String(apellido).trim();
+        const emailNorm = email ? String(email).trim() : null;
+
+        // 1) Buscar cliente SOLO por DNI (clave única)
+        const { data: clienteExistente, error: findErr } = await supabase
             .from("cliente")
             .select("*")
-            .eq("dni", dni)
-            .ilike("nombre", nombre)
-            .ilike("apellido", apellido)
+            .eq("dni", dniNorm)
             .maybeSingle();
 
-        if (error) throw error;
-        if (!cliente) return res.status(401).json({ error: "Cliente no encontrado" });
+        if (findErr) throw findErr;
 
-        let clienteActualizado = cliente;
+        let clienteFinal = clienteExistente;
 
-        // Si viene email, actualizar
-        if (email && email.trim() !== cliente.email) {
-            const { data: updated, error: updError } = await supabase
+        // 2) Si no existe → crear INVITADO WEB
+        if (!clienteFinal) {
+            const { data: creado, error: insErr } = await supabase
                 .from("cliente")
-                .update({ email })
-                .eq("id", cliente.id)
+                .insert([
+                    {
+                        nombre: nombreNorm,
+                        apellido: apellidoNorm,
+                        dni: dniNorm,
+                        email: emailNorm,
+                        canal_alta: "web_shop", // requiere columna
+                    },
+                ])
                 .select("*")
                 .single();
 
-            if (updError) throw updError;
-            clienteActualizado = updated;
+            if (insErr) throw insErr;
+            clienteFinal = creado;
+        } else {
+            // 3) Si existe → actualizar email (con criterio para no pisar datos del local)
+            const patch = {};
+            const canalAlta = clienteFinal.canal_alta || "local";
+            const esLocal = canalAlta === "local";
+
+            // Web: permitimos ajustar nombre/apellido
+            if (!esLocal) {
+                if (nombreNorm && nombreNorm !== clienteFinal.nombre) patch.nombre = nombreNorm;
+                if (apellidoNorm && apellidoNorm !== clienteFinal.apellido) patch.apellido = apellidoNorm;
+            }
+
+            // Email:
+            // - local: solo si estaba vacío
+            // - web: actualizar si cambia
+            if (emailNorm && emailNorm !== clienteFinal.email) {
+                if (!esLocal || !clienteFinal.email) {
+                    patch.email = emailNorm;
+                }
+            }
+
+            if (Object.keys(patch).length > 0) {
+                const { data: updated, error: updErr } = await supabase
+                    .from("cliente")
+                    .update(patch)
+                    .eq("id", clienteFinal.id)
+                    .select("*")
+                    .single();
+
+                if (updErr) throw updErr;
+                clienteFinal = updated;
+            }
         }
 
-        // Cupón de bienvenida
-        let cupon = await getOrCreateWeeklyCoupon(
-            clienteActualizado.id,
-            clienteActualizado.email
-        );
+        // 4) Cupón según canal_alta usando tus helpers
+        const canalAlta = clienteFinal.canal_alta || "local";
 
-        // // Enviar email si hay dirección
-        // let emailSent = false;
-        // if (clienteActualizado.email) {
-        //   try {
-        //     const sendResult = await sendCouponEmail(cupon, clienteActualizado);
-        //     emailSent = sendResult.sent;
-        //   } catch (e) {
-        //     console.error("Error enviando email:", e);
-        //   }
-        // }
+        let cuponResult;
+        if (canalAlta === "local") {
+            cuponResult = await getOrCreateWeeklyCoupon(clienteFinal.id, clienteFinal.email);
+        } else {
+            cuponResult = await getOrCreateGuest24hCoupon(clienteFinal.id, clienteFinal.email);
+        }
 
         return res.status(200).json({
-            message: "Login exitoso",
-            cliente: clienteActualizado,
-            cupon_activo: cuponResult.cupon,              // puede ser null si está bloqueado por la regla semanal
+            message: "Identificación exitosa",
+            cliente: clienteFinal, // SIEMPRE con id
+            canal_cliente: canalAlta,
+
+            cupon_activo: cuponResult.cupon || null,
+
+            // Flags (si el helper no trae blocked, lo dejamos en false)
             cupon_creado: !!cuponResult.created,
             cupon_bloqueado: !!cuponResult.blocked,
             cupon_next_available_at: cuponResult.next_available_at || null,
             cupon_block_reason: cuponResult.reason || null,
         });
-
     } catch (err) {
-        return res.status(500).json({ error: err.message });
+        console.error("Error en loginCliente:", err);
+        return res.status(500).json({
+            error: "Error interno en login",
+            detail: err.message,
+        });
     }
 };
+
+
 
 // =========================================================
 // VALIDAR CUPÓN
 // =========================================================
 export const validarCupon = async (req, res) => {
-  try {
-    const { cliente_id, codigo, total_bruto } = req.body;
+    try {
+        const { cliente_id, codigo, total_bruto } = req.body;
 
-    // Validaciones básicas
-    if (!cliente_id) {
-      return res.status(400).json({ valido: false, error: "cliente_id es requerido" });
-    }
-    if (!codigo || !String(codigo).trim()) {
-      return res.status(400).json({ valido: false, error: "codigo es requerido" });
-    }
+        // Validaciones básicas
+        if (!cliente_id) {
+            return res.status(400).json({ valido: false, error: "cliente_id es requerido" });
+        }
+        if (!codigo || !String(codigo).trim()) {
+            return res.status(400).json({ valido: false, error: "codigo es requerido" });
+        }
 
-    const bruto = Number(total_bruto);
-    if (!Number.isFinite(bruto) || bruto < 0) {
-      return res.status(400).json({
-        valido: false,
-        error: "total_bruto inválido",
-      });
-    }
+        const bruto = Number(total_bruto);
+        if (!Number.isFinite(bruto) || bruto < 0) {
+            return res.status(400).json({
+                valido: false,
+                error: "total_bruto inválido",
+            });
+        }
 
-    // 1) Buscar cupón del cliente
-    const { data: cupon, error: cuponErr } = await supabase
-      .from("cupon_cliente")
-      .select(
-        `
+        // 1) Buscar cupón del cliente
+        const { data: cupon, error: cuponErr } = await supabase
+            .from("cupon_cliente")
+            .select(
+                `
         id,
         codigo,
         cliente_id,
@@ -284,108 +421,108 @@ export const validarCupon = async (req, res) => {
         estado_id,
         creado_en
       `
-      )
-      .eq("cliente_id", cliente_id)
-      .eq("codigo", codigo)
-      .maybeSingle();
+            )
+            .eq("cliente_id", cliente_id)
+            .eq("codigo", codigo)
+            .maybeSingle();
 
-    if (cuponErr) throw cuponErr;
+        if (cuponErr) throw cuponErr;
 
-    // No existe para ese cliente (cupón inventado o mal tipeado)
-    if (!cupon) {
-      return res.status(404).json({
-        valido: false,
-        error: "Cupón no encontrado para este cliente",
-      });
-    }
+        // No existe para ese cliente (cupón inventado o mal tipeado)
+        if (!cupon) {
+            return res.status(404).json({
+                valido: false,
+                error: "Cupón no encontrado para este cliente",
+            });
+        }
 
-    // 2) Verificar estado ACTIVO (ambito cupon)
-    const { data: estadoCupon, error: estadoErr } = await supabase
-      .from("estado")
-      .select("id, nombre, ambito")
-      .eq("id", cupon.estado_id)
-      .maybeSingle();
+        // 2) Verificar estado ACTIVO (ambito cupon)
+        const { data: estadoCupon, error: estadoErr } = await supabase
+            .from("estado")
+            .select("id, nombre, ambito")
+            .eq("id", cupon.estado_id)
+            .maybeSingle();
 
-    if (estadoErr) throw estadoErr;
+        if (estadoErr) throw estadoErr;
 
-    if (!estadoCupon || estadoCupon.ambito !== "cupon") {
-      return res.status(400).json({
-        valido: false,
-        error: "Estado de cupón inválido (revisar tabla estado)",
-      });
-    }
+        if (!estadoCupon || estadoCupon.ambito !== "cupon") {
+            return res.status(400).json({
+                valido: false,
+                error: "Estado de cupón inválido (revisar tabla estado)",
+            });
+        }
 
-    if (estadoCupon.nombre !== "ACTIVO") {
-      return res.status(400).json({
-        valido: false,
-        error: "Cupón no activo",
-        motivo: `Estado actual: ${estadoCupon.nombre}`,
-      });
-    }
+        if (estadoCupon.nombre !== "ACTIVO") {
+            return res.status(400).json({
+                valido: false,
+                error: "Cupón no activo",
+                motivo: `Estado actual: ${estadoCupon.nombre}`,
+            });
+        }
 
-    // 3) Verificar vigencia
-    const ahoraISO = new Date().toISOString();
+        // 3) Verificar vigencia
+        const ahoraISO = new Date().toISOString();
 
-    if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
-      return res.status(400).json({
-        valido: false,
-        error: "El cupón aún no está vigente",
-      });
-    }
+        if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
+            return res.status(400).json({
+                valido: false,
+                error: "El cupón aún no está vigente",
+            });
+        }
 
-    if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
-      return res.status(400).json({
-        valido: false,
-        error: "El cupón está vencido",
-      });
-    }
+        if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
+            return res.status(400).json({
+                valido: false,
+                error: "El cupón está vencido",
+            });
+        }
 
-    // 4) Verificar usos
-    const usoMaximo = cupon.uso_maximo == null ? 1 : Number(cupon.uso_maximo);
-    const usosRealizados = cupon.usos_realizados == null ? 0 : Number(cupon.usos_realizados);
+        // 4) Verificar usos
+        const usoMaximo = cupon.uso_maximo == null ? 1 : Number(cupon.uso_maximo);
+        const usosRealizados = cupon.usos_realizados == null ? 0 : Number(cupon.usos_realizados);
 
-    if (Number.isFinite(usoMaximo) && Number.isFinite(usosRealizados)) {
-      if (usosRealizados >= usoMaximo) {
-        return res.status(400).json({
-          valido: false,
-          error: "Uso agotado",
+        if (Number.isFinite(usoMaximo) && Number.isFinite(usosRealizados)) {
+            if (usosRealizados >= usoMaximo) {
+                return res.status(400).json({
+                    valido: false,
+                    error: "Uso agotado",
+                });
+            }
+        }
+
+        // 5) Calcular descuento
+        let descuento = 0;
+
+        if (cupon.descuento_monto != null) {
+            descuento = Number(cupon.descuento_monto) || 0;
+        } else if (cupon.descuento_porcentaje != null) {
+            const porcentaje = Number(cupon.descuento_porcentaje) || 0;
+            descuento = bruto * (porcentaje / 100);
+        }
+
+        // Normalizar descuento
+        if (!Number.isFinite(descuento) || descuento < 0) descuento = 0;
+        if (descuento > bruto) descuento = bruto;
+
+        const totalConDescuento = bruto - descuento;
+
+        return res.status(200).json({
+            valido: true,
+            descuento,
+            total_con_descuento: totalConDescuento,
+            cupon: {
+                ...cupon,
+                estado: estadoCupon, // útil para el front/admin
+            },
         });
-      }
+    } catch (err) {
+        console.error("Error en validarCupon:", err);
+        return res.status(500).json({
+            valido: false,
+            error: "Error interno al validar cupón",
+            detail: err.message,
+        });
     }
-
-    // 5) Calcular descuento
-    let descuento = 0;
-
-    if (cupon.descuento_monto != null) {
-      descuento = Number(cupon.descuento_monto) || 0;
-    } else if (cupon.descuento_porcentaje != null) {
-      const porcentaje = Number(cupon.descuento_porcentaje) || 0;
-      descuento = bruto * (porcentaje / 100);
-    }
-
-    // Normalizar descuento
-    if (!Number.isFinite(descuento) || descuento < 0) descuento = 0;
-    if (descuento > bruto) descuento = bruto;
-
-    const totalConDescuento = bruto - descuento;
-
-    return res.status(200).json({
-      valido: true,
-      descuento,
-      total_con_descuento: totalConDescuento,
-      cupon: {
-        ...cupon,
-        estado: estadoCupon, // útil para el front/admin
-      },
-    });
-  } catch (err) {
-    console.error("Error en validarCupon:", err);
-    return res.status(500).json({
-      valido: false,
-      error: "Error interno al validar cupón",
-      detail: err.message,
-    });
-  }
 };
 
 
