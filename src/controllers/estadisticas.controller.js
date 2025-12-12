@@ -595,6 +595,7 @@ export const getResumenVentasPorMes = async (req, res) => {
     });
   }
 };
+
 //fin test : pasando a SQL PURO y añadiendo costos
 
 

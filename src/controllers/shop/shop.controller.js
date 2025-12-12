@@ -798,131 +798,133 @@ export const crearVentaWeb = async (req, res) => {
 };
 
 
-const sendCouponEmail = async (cupon, cliente) => {
-  const email = cliente.email || cupon.email_destino;
-  if (!email) return { sent: false, reason: "NO_EMAIL" };
+// const sendCouponEmail = async (cupon, cliente) => {
+//   const email = cliente.email || cupon.email_destino;
+//   if (!email) return { sent: false, reason: "NO_EMAIL" };
 
-  const descuentoTexto =
-    cupon.descuento_porcentaje != null
-      ? `${cupon.descuento_porcentaje}% de descuento`
-      : cupon.descuento_monto != null
-      ? `$${cupon.descuento_monto} de descuento`
-      : "un descuento especial";
+//   const descuentoTexto =
+//     cupon.descuento_porcentaje != null
+//       ? `${cupon.descuento_porcentaje}% de descuento`
+//       : cupon.descuento_monto != null
+//       ? `$${cupon.descuento_monto} de descuento`
+//       : "un descuento especial";
 
-  const from = process.env.EMAIL_FROM || "JG Informática <no-reply@resend.dev>";
+//   const from = process.env.EMAIL_FROM || "JG Informática <no-reply@resend.dev>";
 
-  const html = `
-  <!DOCTYPE html>
-  <html lang="es">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Tu cupón de bienvenida - JG Informática</title>
-  </head>
-  <body style="margin:0;padding:0;background-color:#f4f4f5;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:20px 0;">
-      <tr>
-        <td align="center">
-          <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 8px 20px rgba(15,23,42,0.15);">
-            <tr>
-              <td style="background:linear-gradient(135deg,#111827,#1f2937);padding:20px 24px;color:#f9fafb;">
-                <h1 style="margin:0;font-size:22px;font-weight:700;">🎁 ¡Bienvenido al Shop de JG Informática!</h1>
-                <p style="margin:8px 0 0;font-size:14px;color:#e5e7eb;">
-                  Hola <strong>${cliente.nombre}</strong>, tenemos un regalo para tu próxima compra.
-                </p>
-              </td>
-            </tr>
+//   const html = `
+//   <!DOCTYPE html>
+//   <html lang="es">
+//   <head>
+//     <meta charset="UTF-8" />
+//     <title>Tu cupón de bienvenida - JG Informática</title>
+//   </head>
+//   <body style="margin:0;padding:0;background-color:#f4f4f5;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+//     <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5;padding:20px 0;">
+//       <tr>
+//         <td align="center">
+//           <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 8px 20px rgba(15,23,42,0.15);">
+//             <tr>
+//               <td style="background:linear-gradient(135deg,#111827,#1f2937);padding:20px 24px;color:#f9fafb;">
+//                 <h1 style="margin:0;font-size:22px;font-weight:700;">🎁 ¡Bienvenido al Shop de JG Informática!</h1>
+//                 <p style="margin:8px 0 0;font-size:14px;color:#e5e7eb;">
+//                   Hola <strong>${cliente.nombre}</strong>, tenemos un regalo para tu próxima compra.
+//                 </p>
+//               </td>
+//             </tr>
 
-            <tr>
-              <td style="padding:24px;">
-                <p style="margin:0 0 12px;font-size:15px;color:#111827;">
-                  Te creamos un cupón exclusivo para usar en nuestro shop online:
-                </p>
+//             <tr>
+//               <td style="padding:24px;">
+//                 <p style="margin:0 0 12px;font-size:15px;color:#111827;">
+//                   Te creamos un cupón exclusivo para usar en nuestro shop online:
+//                 </p>
 
-                <div style="margin:16px 0;padding:16px;border-radius:10px;background-color:#f9fafb;border:1px solid #e5e7eb;">
-                  <p style="margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;">
-                    Código de tu cupón
-                  </p>
-                  <p style="margin:0 0 12px;">
-                    <span style="display:inline-block;font-size:20px;font-weight:700;background-color:#111827;color:#f9fafb;padding:8px 14px;border-radius:8px;letter-spacing:0.08em;">
-                      ${cupon.codigo}
-                    </span>
-                  </p>
+//                 <div style="margin:16px 0;padding:16px;border-radius:10px;background-color:#f9fafb;border:1px solid #e5e7eb;">
+//                   <p style="margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:#6b7280;">
+//                     Código de tu cupón
+//                   </p>
+//                   <p style="margin:0 0 12px;">
+//                     <span style="display:inline-block;font-size:20px;font-weight:700;background-color:#111827;color:#f9fafb;padding:8px 14px;border-radius:8px;letter-spacing:0.08em;">
+//                       ${cupon.codigo}
+//                     </span>
+//                   </p>
 
-                  <p style="margin:0 0 4px;font-size:14px;color:#111827;">
-                    Beneficio: <strong>${descuentoTexto}</strong>
-                  </p>
-                  <p style="margin:0;font-size:13px;color:#4b5563;">
-                    Válido desde <strong>${cupon.valido_desde}</strong> hasta <strong>${cupon.valido_hasta}</strong><br/>
-                    Uso máximo: <strong>${cupon.uso_maximo || 1}</strong> vez/veces.
-                  </p>
-                </div>
+//                   <p style="margin:0 0 4px;font-size:14px;color:#111827;">
+//                     Beneficio: <strong>${descuentoTexto}</strong>
+//                   </p>
+//                   <p style="margin:0;font-size:13px;color:#4b5563;">
+//                     Válido desde <strong>${cupon.valido_desde}</strong> hasta <strong>${cupon.valido_hasta}</strong><br/>
+//                     Uso máximo: <strong>${cupon.uso_maximo || 1}</strong> vez/veces.
+//                   </p>
+//                 </div>
 
-                <p style="margin:0 0 16px;font-size:14px;color:#374151;">
-                  Cuando ingreses a nuestro shop y avances al paso de
-                  <strong>Finalizar compra</strong>, vas a poder aplicar este cupón.
-                </p>
+//                 <p style="margin:0 0 16px;font-size:14px;color:#374151;">
+//                   Cuando ingreses a nuestro shop y avances al paso de
+//                   <strong>Finalizar compra</strong>, vas a poder aplicar este cupón.
+//                 </p>
 
-                <div style="margin:24px 0 0;" align="center">
-                  <a href="#" style="display:inline-block;background-color:#111827;color:#f9fafb;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:999px;">
-                    Ir al Shop de JG Informática
-                  </a>
-                </div>
-              </td>
-            </tr>
+//                 <div style="margin:24px 0 0;" align="center">
+//                   <a href="#" style="display:inline-block;background-color:#111827;color:#f9fafb;font-size:14px;font-weight:600;text-decoration:none;padding:10px 20px;border-radius:999px;">
+//                     Ir al Shop de JG Informática
+//                   </a>
+//                 </div>
+//               </td>
+//             </tr>
 
-            <tr>
-              <td style="padding:16px 24px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
-                <p style="margin:0;font-size:11px;color:#6b7280;line-height:1.5;">
-                  Estás recibiendo este correo porque iniciaste sesión en el Shop de JG Informática
-                  y generaste un cupón de bienvenida asociado a este email.
-                </p>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-  </html>
-  `;
+//             <tr>
+//               <td style="padding:16px 24px;background-color:#f9fafb;border-top:1px solid #e5e7eb;">
+//                 <p style="margin:0;font-size:11px;color:#6b7280;line-height:1.5;">
+//                   Estás recibiendo este correo porque iniciaste sesión en el Shop de JG Informática
+//                   y generaste un cupón de bienvenida asociado a este email.
+//                 </p>
+//               </td>
+//             </tr>
+//           </table>
+//         </td>
+//       </tr>
+//     </table>
+//   </body>
+//   </html>
+//   `;
 
-  const { data, error } = await resend.emails.send({
-    from,
-    to: email,
-    subject: "🎁 Tu cupón de bienvenida – JG Informática",
-    html,
-  });
+//   const { data, error } = await resend.emails.send({
+//     from,
+//     to: email,
+//     subject: "🎁 Tu cupón de bienvenida – JG Informática",
+//     html,
+//   });
 
-  if (error) {
-    console.error("Error enviando email con Resend:", error);
-    return { sent: false, reason: "RESEND_ERROR" };
-  }
+//   if (error) {
+//     console.error("Error enviando email con Resend:", error);
+//     return { sent: false, reason: "RESEND_ERROR" };
+//   }
 
-  const ahoraISO = new Date().toISOString();
+//   const ahoraISO = new Date().toISOString();
 
-  const { error: updateError } = await supabase
-    .from("cupon_cliente")
-    .update({
-      enviado_email: true,
-      fecha_envio_email: ahoraISO,
-      email_destino: email,
-    })
-    .eq("id", cupon.id);
+//   const { error: updateError } = await supabase
+//     .from("cupon_cliente")
+//     .update({
+//       enviado_email: true,
+//       fecha_envio_email: ahoraISO,
+//       email_destino: email,
+//     })
+//     .eq("id", cupon.id);
 
-  if (updateError) {
-    console.error(
-      "Error actualizando cupon_cliente tras envío de email:",
-      updateError
-    );
-  }
+//   if (updateError) {
+//     console.error(
+//       "Error actualizando cupon_cliente tras envío de email:",
+//       updateError
+//     );
+//   }
 
-  return { sent: true, data };
-};
+//   return { sent: true, data };
+// };
 
 
 // =========================================================
 // REGISTRAR SESIÓN DE CLIENTE (SHOP)
 // =========================================================
+
+
 export const registrarSesionCliente = async (req, res) => {
   try {
     const { cliente_id, origen } = req.body;
