@@ -499,7 +499,7 @@ export const getVentas = async (req, res) => {
         )
       `
       )
-      .eq("estado_id", [19, 26]) // solo activas
+      .in("estado_id", [19, 26])
       .order("fecha", { ascending: false });
 
     // ✅ Si viene canal y NO es "todos", filtramos
