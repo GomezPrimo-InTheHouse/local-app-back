@@ -201,7 +201,7 @@ export const loginCliente = async (req, res) => {
       message: "Login exitoso",
       cliente: clienteActualizado,
       cupon_bienvenida: cupon,
-      email_cupon_enviado: emailSent,
+      
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
