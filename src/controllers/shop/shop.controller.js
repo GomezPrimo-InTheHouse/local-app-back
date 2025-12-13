@@ -528,336 +528,165 @@ export const validarCupon = async (req, res) => {
 
 
 
+// crear venta web
+// controllers/shopVenta.controller.js
+// =========================================================
+// VENTAS WEB - Controller basado en RPC Supabase (transaccional)
+// RPC: crear_venta_web(_cliente_id, _items, _monto_abonado, _estado_nombre, _codigo_cupon)
+// =========================================================
+
+
+
+const normalizeItems = (items) => {
+  if (!Array.isArray(items)) return [];
+
+  // Normalizamos y validamos shape mínimo
+  const norm = items
+    .map((it) => ({
+      producto_id: Number(it?.producto_id),
+      cantidad: Number(it?.cantidad),
+    }))
+    .filter(
+      (it) =>
+        Number.isFinite(it.producto_id) &&
+        it.producto_id > 0 &&
+        Number.isFinite(it.cantidad) &&
+        it.cantidad > 0
+    )
+    // Evitar duplicados: sumamos cantidades por producto_id
+    .reduce((acc, it) => {
+      const found = acc.find((x) => x.producto_id === it.producto_id);
+      if (found) found.cantidad += it.cantidad;
+      else acc.push(it);
+      return acc;
+    }, []);
+
+  return norm;
+};
+
+const parseNullableNumber = (val) => {
+  if (val === undefined || val === null || val === "") return null;
+  const n = Number(val);
+  return Number.isFinite(n) ? n : null;
+};
+
+// Convierte errores comunes de Supabase/Postgres a mensajes útiles
+const mapDbError = (err) => {
+  const message = err?.message || "Error desconocido";
+  const code = err?.code || err?.details?.code;
+
+  // Errores lanzados por RAISE EXCEPTION en la RPC suelen venir como message directo
+  // Ej: "Seña insuficiente. Mínimo requerido: 12345"
+  if (message.toLowerCase().includes("seña insuficiente")) {
+    return { status: 400, error: message };
+  }
+  if (message.toLowerCase().includes("cupón inválido")) {
+    return { status: 400, error: message };
+  }
+  if (message.toLowerCase().includes("producto") && message.toLowerCase().includes("no disponible")) {
+    return { status: 400, error: message };
+  }
+  if (message.toLowerCase().includes("items vacío")) {
+    return { status: 400, error: message };
+  }
+  if (message.toLowerCase().includes("estado de venta inválido")) {
+    return { status: 500, error: "Configuración inválida: estado de venta no existe" };
+  }
+
+  // Código PostgreSQL genérico: 22P02 invalid_text_representation, etc.
+  if (code === "22P02") return { status: 400, error: "Datos inválidos en la solicitud" };
+
+  return { status: 500, error: "Error interno al crear venta web", detail: message };
+};
+
+// =========================================================
+// POST /shop/ventas
+// =========================================================
 export const crearVentaWeb = async (req, res) => {
   try {
     const {
       cliente_id,
       items,
-      monto_abonado,
-      estado_nombre,
-      codigo_cupon, // opcional
+      monto_abonado = 0,
+      estado_nombre = "PENDIENTE_PAGO",
+      codigo_cupon = null,
     } = req.body;
 
-    if (!cliente_id) {
-      return res.status(400).json({ error: "cliente_id es requerido" });
+    // Validaciones mínimas de request
+    const clienteIdNum = Number(cliente_id);
+    if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0) {
+      return res.status(400).json({ error: "cliente_id es requerido y debe ser numérico" });
     }
 
-    if (!Array.isArray(items) || items.length === 0) {
+    const itemsNorm = normalizeItems(items);
+    if (!itemsNorm.length) {
       return res.status(400).json({
-        error: "items debe ser un array con al menos un producto",
+        error: "items debe ser un array con al menos un producto (producto_id, cantidad > 0)",
       });
     }
 
-    // ✅ Validar items (mínimo)
-    for (const it of items) {
-      if (!it.producto_id) {
-        return res.status(400).json({ error: "items contiene producto_id inválido" });
-      }
-      const cant = Number(it.cantidad || 0);
-      if (!Number.isFinite(cant) || cant <= 0) {
-        return res.status(400).json({ error: "items contiene cantidad inválida" });
-      }
-    }
-
-    // 1) Traer info real de productos (precio + tipo_entrega)
-    const productoIds = [...new Set(items.map((it) => it.producto_id))];
-
-    const { data: productos, error: prodError } = await supabase
-      .from("producto")
-      .select("id, precio, tipo_entrega, subir_web")
-      .in("id", productoIds);
-
-    if (prodError) throw prodError;
-
-    if (!productos || productos.length !== productoIds.length) {
-      return res.status(400).json({
-        error: "No se pudieron encontrar todos los productos indicados. Verificar IDs.",
-      });
-    }
-
-    // (Opcional) evitar comprar productos no publicados
-    // Si querés permitir igual, borrá esta validación
-    const noPublicados = productos.filter((p) => p.subir_web !== true);
-    if (noPublicados.length > 0) {
-      return res.status(400).json({
-        error: "Hay productos no disponibles para el shop (no publicados).",
-        productos_no_publicados: noPublicados.map((p) => p.id),
-      });
-    }
-
-    const mapProducto = new Map();
-    for (const p of productos) {
-      mapProducto.set(p.id, {
-        precio: Number(p.precio),
-        tipo_entrega: p.tipo_entrega,
-      });
-    }
-
-    // 2) Calcular subtotales y total bruto
-    const detalles = items.map((it) => {
-      const info = mapProducto.get(it.producto_id);
-      const precio_unitario = info.precio;
-      const cantidad = Number(it.cantidad || 0);
-      const subtotal = precio_unitario * cantidad;
-
-      return {
-        producto_id: it.producto_id,
-        cantidad,
-        precio_unitario,
-        subtotal,
-        tipo_entrega: info.tipo_entrega, // ✅ útil para respuesta/front/debug
-      };
-    });
-
-    const totalBruto = detalles.reduce((acc, d) => acc + d.subtotal, 0);
-
-    // 3) Cupón (tu lógica actual)
-    let descuentoMonto = 0;
-    let totalFinal = totalBruto;
-    let cuponAplicado = null;
-    let cuponMotivoNoAplicado = null;
-
-    if (codigo_cupon) {
-      const ahoraISO = new Date().toISOString();
-
-      const { data: cupon, error: cuponError } = await supabase
-        .from("cupon_cliente")
-        .select(`
-          id,
-          codigo,
-          cliente_id,
-          descuento_porcentaje,
-          descuento_monto,
-          valido_desde,
-          valido_hasta,
-          uso_maximo,
-          usos_realizados,
-          estado_id
-        `)
-        .eq("cliente_id", cliente_id)
-        .eq("codigo", codigo_cupon)
-        .maybeSingle();
-
-      if (cuponError) throw cuponError;
-
-      if (!cupon) {
-        return res.status(400).json({ error: "Cupón no válido para este cliente" });
-      }
-
-      const { data: estadoCupon, error: estError } = await supabase
-        .from("estado")
-        .select("id, nombre")
-        .eq("id", cupon.estado_id)
-        .eq("ambito", "cupon")
-        .maybeSingle();
-
-      if (estError) throw estError;
-
-      if (!estadoCupon || estadoCupon.nombre !== "ACTIVO") {
-        cuponMotivoNoAplicado = "El cupón no está activo (ya usado o deshabilitado)";
-      } else if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
-        cuponMotivoNoAplicado = "El cupón aún no está vigente";
-      } else if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
-        cuponMotivoNoAplicado = "El cupón está vencido";
-      } else if (
-        cupon.uso_maximo != null &&
-        cupon.usos_realizados != null &&
-        cupon.usos_realizados >= cupon.uso_maximo
-      ) {
-        cuponMotivoNoAplicado = "El cupón ya fue utilizado el máximo de veces";
-      } else {
-        if (cupon.descuento_monto != null) {
-          descuentoMonto = Number(cupon.descuento_monto);
-        } else if (cupon.descuento_porcentaje != null) {
-          descuentoMonto = totalBruto * (cupon.descuento_porcentaje / 100);
-        }
-
-        if (descuentoMonto < 0) descuentoMonto = 0;
-        if (descuentoMonto > totalBruto) descuentoMonto = totalBruto;
-
-        totalFinal = totalBruto - descuentoMonto;
-        cuponAplicado = cupon;
-      }
-    }
-
-    // 4) ✅ Capa Operación: tipo_entrega_venta + seña
-    const tiposEntrega = new Set(detalles.map((d) => d.tipo_entrega));
-    const hayPedido = tiposEntrega.has("A_PEDIDO_24H");
-    const hayLocal = tiposEntrega.has("EN_STOCK_LOCAL");
-    const hayConsultar = tiposEntrega.has("SIN_STOCK_CONSULTAR");
-
-    // Regla de negocio: ¿permitís vender "SIN_STOCK_CONSULTAR"?
-    // Si querés BLOQUEAR, descomentá:
-    // if (hayConsultar) {
-    //   return res.status(400).json({ error: "Hay productos marcados como CONSULTAR STOCK. No se puede finalizar compra." });
-    // }
-
-    let tipoEntregaVenta = "LOCAL";
-    if (hayPedido && (hayLocal || hayConsultar)) tipoEntregaVenta = "MIXTA";
-    else if (hayPedido) tipoEntregaVenta = "A_PEDIDO";
-
-    const requiereCompraProveedor = hayPedido;
-    const requiereSenia = hayPedido;
-
-    // Seña mínima 50% del totalFinal (después de cupón)
-    const seniaMinima = requiereSenia ? Math.round(Number(totalFinal) * 0.5) : 0;
-
-    const montoAbonadoNum = monto_abonado != null ? Number(monto_abonado) : 0;
+    const montoAbonadoNum = parseNullableNumber(monto_abonado) ?? 0;
     if (!Number.isFinite(montoAbonadoNum) || montoAbonadoNum < 0) {
       return res.status(400).json({ error: "monto_abonado inválido" });
     }
 
-    if (requiereSenia && montoAbonadoNum < seniaMinima) {
-      return res.status(400).json({
-        error: "Seña insuficiente para carrito con productos A_PEDIDO_24H",
-        requiere_senia: true,
-        senia_minima: seniaMinima,
-        total_final: totalFinal,
-        monto_abonado: montoAbonadoNum,
-      });
+    const estadoNombreFinal =
+      typeof estado_nombre === "string" && estado_nombre.trim()
+        ? estado_nombre.trim().toUpperCase()
+        : "PENDIENTE_PAGO";
+
+    const codigoCuponFinal =
+      typeof codigo_cupon === "string" && codigo_cupon.trim() ? codigo_cupon.trim() : null;
+
+    // ✅ Llamada transaccional a RPC
+    const { data, error } = await supabase.rpc("crear_venta_web", {
+      _cliente_id: clienteIdNum,
+      _items: itemsNorm, // jsonb array
+      _monto_abonado: montoAbonadoNum,
+      _estado_nombre: estadoNombreFinal,
+      _codigo_cupon: codigoCuponFinal,
+    });
+
+    if (error) {
+      console.error("Error RPC crear_venta_web:", error);
+      const mapped = mapDbError(error);
+      return res.status(mapped.status).json(mapped);
     }
 
-    // 5) Determinar estado venta (tu lógica)
-    const estadoNombreFinal = estado_nombre || "PENDIENTE_PAGO";
+    /**
+     * data esperado de la RPC:
+     * {
+     *   venta_id,
+     *   total_bruto,
+     *   descuento,
+     *   total_final,
+     *   requiere_senia,
+     *   senia_minima,
+     *   tipo_entrega_venta
+     * }
+     */
 
-    const { data: estadoVenta, error: estadoError } = await supabase
-      .from("estado")
-      .select("id")
-      .eq("nombre", estadoNombreFinal)
-      .eq("ambito", "venta")
-      .maybeSingle();
-
-    if (estadoError) throw estadoError;
-    if (!estadoVenta) {
-      return res.status(500).json({
-        error: `No se encontró estado '${estadoNombreFinal}' para ambito 'venta'.`,
-      });
-    }
-
-    const saldo = Number(totalFinal) - montoAbonadoNum;
-
-    // 6) Insertar venta (ahora con campos operativos)
-    const { data: ventaInsert, error: ventaError } = await supabase
-      .from("venta")
-      .insert([
-        {
-          fecha: new Date().toISOString(),
-          total: totalFinal,
-          cliente_id,
-          monto_abonado: montoAbonadoNum,
-          saldo,
-          canal: "web_shop",
-          estado_id: estadoVenta.id,
-
-          // ✅ Operación
-          tipo_entrega_venta: tipoEntregaVenta,
-          requiere_compra_proveedor: requiereCompraProveedor,
-          requiere_senia: requiereSenia,
-          senia_minima: requiereSenia ? seniaMinima : null,
-        },
-      ])
-      .select(`
-        id,
-        fecha,
-        total,
-        cliente_id,
-        monto_abonado,
-        saldo,
-        canal,
-        estado_id,
-        tipo_entrega_venta,
-        requiere_compra_proveedor,
-        requiere_senia,
-        senia_minima
-      `)
-      .single();
-
-    if (ventaError) throw ventaError;
-
-    const ventaId = ventaInsert.id;
-
-    // 7) Insertar detalle_venta
-    const detallesConVenta = detalles.map((d) => ({
-      venta_id: ventaId,
-      producto_id: d.producto_id,
-      cantidad: d.cantidad,
-      precio_unitario: d.precio_unitario,
-      subtotal: d.subtotal,
-      // (si tu tabla detalle_venta no tiene tipo_entrega, no lo guardes)
-    }));
-
-    const { data: detallesInsert, error: detalleError } = await supabase
-      .from("detalle_venta")
-      .insert(detallesConVenta)
-      .select(`
-        id,
-        venta_id,
-        producto_id,
-        cantidad,
-        precio_unitario,
-        subtotal
-      `);
-
-    if (detalleError) throw detalleError;
-
-    // 8) Cupón aplicado → actualizar usos (⚠️ riesgo de concurrencia, ver recomendaciones)
-    if (cuponAplicado) {
-      const usosNuevos = (cuponAplicado.usos_realizados || 0) + 1;
-      let nuevoEstadoId = cuponAplicado.estado_id;
-
-      if (cuponAplicado.uso_maximo != null && usosNuevos >= cuponAplicado.uso_maximo) {
-        const { data: estadoUsado, error: estUsadoErr } = await supabase
-          .from("estado")
-          .select("id")
-          .eq("nombre", "USADO")
-          .eq("ambito", "cupon")
-          .maybeSingle();
-
-        if (!estUsadoErr && estadoUsado) {
-          nuevoEstadoId = estadoUsado.id;
-        }
-      }
-
-      const { error: updCuponErr } = await supabase
-        .from("cupon_cliente")
-        .update({
-          usos_realizados: usosNuevos,
-          estado_id: nuevoEstadoId,
-        })
-        .eq("id", cuponAplicado.id);
-
-      if (updCuponErr) {
-        console.error("Error actualizando cupón tras la venta:", updCuponErr);
-      }
-    }
+    // 🔎 (Opcional) Si querés devolver venta + detalles completos:
+    // Para no romper performance, lo dejo como opcional por flag.
+    // const { data: ventaRow } = await supabase.from("venta").select("*").eq("id", data.venta_id).single();
+    // const { data: detallesRow } = await supabase.from("detalle_venta").select("*").eq("venta_id", data.venta_id);
 
     return res.status(201).json({
       message: "Venta web creada correctamente",
-      venta: ventaInsert,
-      detalles: detallesInsert,
-
-      total_bruto: totalBruto,
-      descuento: descuentoMonto,
-      total_final: totalFinal,
-
-      codigo_cupon: cuponAplicado ? codigo_cupon : null,
-      cupon_aplicado: !!cuponAplicado,
-      cupon_motivo_no_aplicado: cuponMotivoNoAplicado,
-
-      // ✅ datos para el front/checkout
-      requiere_senia: requiereSenia,
-      senia_minima: requiereSenia ? seniaMinima : 0,
-      tipo_entrega_venta: tipoEntregaVenta,
-      requiere_compra_proveedor: requiereCompraProveedor,
+      ...data,
+      // venta: ventaRow ?? null,
+      // detalles: detallesRow ?? null,
     });
   } catch (err) {
-    console.error("Error en crearVentaWeb:", err);
+    console.error("Error en crearVentaWeb controller:", err);
     return res.status(500).json({
       error: "Error interno al crear venta web",
-      detail: err.message,
+      detail: err?.message || String(err),
     });
   }
 };
+
+//fin crear venta web
 
 
 
