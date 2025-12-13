@@ -527,350 +527,102 @@ export const validarCupon = async (req, res) => {
 
 
 
-// export const crearVentaWeb = async (req, res) => {
-//   try {
-//     const {
-//       cliente_id,
-//       items,
-//       monto_abonado,
-//       estado_nombre,
-//       codigo_cupon,          // opcional
-//     } = req.body;
-
-//     if (!cliente_id) {
-//       return res.status(400).json({ error: "cliente_id es requerido" });
-//     }
-
-//     if (!Array.isArray(items) || items.length === 0) {
-//       return res.status(400).json({
-//         error: "items debe ser un array con al menos un producto",
-//       });
-//     }
-
-//     // 1) Traer info de productos (precio)
-//     const productoIds = items.map((it) => it.producto_id);
-
-//     const { data: productos, error: prodError } = await supabase
-//       .from("producto")
-//       .select("id, precio")
-//       .in("id", productoIds);
-
-//     if (prodError) throw prodError;
-
-//     if (!productos || productos.length !== productoIds.length) {
-//       return res.status(400).json({
-//         error:
-//           "No se pudieron encontrar todos los productos indicados. Verificar IDs.",
-//       });
-//     }
-
-//     const mapPrecio = new Map();
-//     for (const p of productos) {
-//       mapPrecio.set(p.id, Number(p.precio));
-//     }
-
-//     // 2) Calcular subtotales y total bruto (antes de cupones)
-//     const detalles = items.map((it) => {
-//       const precio_unitario = mapPrecio.get(it.producto_id);
-//       const cantidad = Number(it.cantidad || 0);
-//       const subtotal = precio_unitario * cantidad;
-//       return {
-//         producto_id: it.producto_id,
-//         cantidad,
-//         precio_unitario,
-//         subtotal,
-//       };
-//     });
-
-//     const totalBruto = detalles.reduce((acc, d) => acc + d.subtotal, 0);
-
-//     // 3) Aplicar cupón si viene código
-//     let descuentoMonto = 0;
-//     let totalFinal = totalBruto;
-//     let cuponAplicado = null;
-
-//     if (codigo_cupon) {
-//       const ahoraISO = new Date().toISOString();
-
-//       const { data: cupon, error: cuponError } = await supabase
-//         .from("cupon_cliente")
-//         .select(
-//           `
-//           id,
-//           codigo,
-//           cliente_id,
-//           descuento_porcentaje,
-//           descuento_monto,
-//           valido_desde,
-//           valido_hasta,
-//           uso_maximo,
-//           usos_realizados,
-//           estado_id
-//         `
-//         )
-//         .eq("cliente_id", cliente_id)
-//         .eq("codigo", codigo_cupon)
-//         .maybeSingle();
-
-//       if (cuponError) throw cuponError;
-
-//       if (!cupon) {
-//         return res.status(400).json({
-//           error: "Cupón no válido para este cliente",
-//         });
-//       }
-
-//       // Verificar estado ACTIVO
-//       const { data: estadoCupon, error: estError } = await supabase
-//         .from("estado")
-//         .select("id, nombre")
-//         .eq("id", cupon.estado_id)
-//         .eq("ambito", "cupon")
-//         .maybeSingle();
-
-//       if (estError) throw estError;
-
-//       if (!estadoCupon || estadoCupon.nombre !== "ACTIVO") {
-//         return res.status(400).json({
-//           error: "El cupón no está activo",
-//         });
-//       }
-
-//       // Verificar fechas y usos
-//       if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
-//         return res.status(400).json({ error: "El cupón aún no está vigente" });
-//       }
-
-//       if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
-//         return res.status(400).json({ error: "El cupón está vencido" });
-//       }
-
-//       if (
-//         cupon.uso_maximo != null &&
-//         cupon.usos_realizados != null &&
-//         cupon.usos_realizados >= cupon.uso_maximo
-//       ) {
-//         return res.status(400).json({
-//           error: "El cupón ya fue utilizado el máximo de veces",
-//         });
-//       }
-
-//       // Calcular descuento
-//       if (cupon.descuento_monto != null) {
-//         descuentoMonto = Number(cupon.descuento_monto);
-//       } else if (cupon.descuento_porcentaje != null) {
-//         descuentoMonto = totalBruto * (cupon.descuento_porcentaje / 100);
-//       }
-
-//       if (descuentoMonto < 0) descuentoMonto = 0;
-//       if (descuentoMonto > totalBruto) descuentoMonto = totalBruto;
-
-//       totalFinal = totalBruto - descuentoMonto;
-//       cuponAplicado = cupon;
-//     }
-
-//     // 4) Determinar estado venta
-//     const estadoNombreFinal = estado_nombre || "PENDIENTE_PAGO";
-
-//     const { data: estadoVenta, error: estadoError } = await supabase
-//       .from("estado")
-//       .select("id")
-//       .eq("nombre", estadoNombreFinal)
-//       .eq("ambito", "venta")
-//       .maybeSingle();
-
-//     if (estadoError) throw estadoError;
-
-//     if (!estadoVenta) {
-//       return res.status(500).json({
-//         error: `No se encontró estado '${estadoNombreFinal}' para ambito 'venta'.`,
-//       });
-//     }
-
-//     const montoAbonadoNum =
-//       monto_abonado != null ? Number(monto_abonado) : 0;
-//     const saldo = totalFinal - montoAbonadoNum;
-
-//     // 5) Insertar venta
-//     const { data: ventaInsert, error: ventaError } = await supabase
-//       .from("venta")
-//       .insert([
-//         {
-//           fecha: new Date().toISOString(),
-//           total: totalFinal,
-//           cliente_id,
-//           monto_abonado: montoAbonadoNum,
-//           saldo,
-//           canal: "web_shop",
-//           estado_id: estadoVenta.id,
-//         },
-//       ])
-//       .select(
-//         `
-//         id,
-//         fecha,
-//         total,
-//         cliente_id,
-//         monto_abonado,
-//         saldo,
-//         canal,
-//         estado_id
-//       `
-//       )
-//       .single();
-
-//     if (ventaError) throw ventaError;
-
-//     const ventaId = ventaInsert.id;
-
-//     // 6) Insertar detalle_venta
-//     const detallesConVenta = detalles.map((d) => ({
-//       venta_id: ventaId,
-//       producto_id: d.producto_id,
-//       cantidad: d.cantidad,
-//       precio_unitario: d.precio_unitario,
-//       subtotal: d.subtotal,
-//     }));
-
-//     const { data: detallesInsert, error: detalleError } = await supabase
-//       .from("detalle_venta")
-//       .insert(detallesConVenta)
-//       .select(
-//         `
-//         id,
-//         venta_id,
-//         producto_id,
-//         cantidad,
-//         precio_unitario,
-//         subtotal
-//       `
-//       );
-
-//     if (detalleError) throw detalleError;
-
-//     // 7) Si hubo cupón, marcarlo como usado (incrementar usos, y si llegó al max → USADO)
-//     if (cuponAplicado) {
-//       const usosNuevos = (cuponAplicado.usos_realizados || 0) + 1;
-//       let nuevoEstadoId = cuponAplicado.estado_id;
-
-//       if (
-//         cuponAplicado.uso_maximo != null &&
-//         usosNuevos >= cuponAplicado.uso_maximo
-//       ) {
-//         // buscar estado USADO
-//         const { data: estadoUsado, error: estUsadoErr } = await supabase
-//           .from("estado")
-//           .select("id")
-//           .eq("nombre", "USADO")
-//           .eq("ambito", "cupon")
-//           .maybeSingle();
-
-//         if (!estUsadoErr && estadoUsado) {
-//           nuevoEstadoId = estadoUsado.id;
-//         }
-//       }
-
-//       const { error: updCuponErr } = await supabase
-//         .from("cupon_cliente")
-//         .update({
-//           usos_realizados: usosNuevos,
-//           estado_id: nuevoEstadoId,
-//         })
-//         .eq("id", cuponAplicado.id);
-
-//       if (updCuponErr) {
-//         console.error("Error actualizando cupón tras la venta:", updCuponErr);
-//       }
-//     }
-
-//     return res.status(201).json({
-//       message: "Venta web creada correctamente",
-//       venta: ventaInsert,
-//       detalles: detallesInsert,
-//       total_bruto: totalBruto,
-//       descuento: descuentoMonto,
-//       total_final: totalFinal,
-//       codigo_cupon: codigo_cupon || null,
-//     });
-//   } catch (err) {
-//     console.error("Error en crearVentaWeb:", err);
-//     return res.status(500).json({
-//       error: "Error interno al crear venta web",
-//       detail: err.message,
-//     });
-//   }
-// };
 
 export const crearVentaWeb = async (req, res) => {
-    try {
-        const {
-            cliente_id,
-            items,
-            monto_abonado,
-            estado_nombre,
-            codigo_cupon, // opcional
-        } = req.body;
+  try {
+    const {
+      cliente_id,
+      items,
+      monto_abonado,
+      estado_nombre,
+      codigo_cupon, // opcional
+    } = req.body;
 
-        if (!cliente_id) {
-            return res.status(400).json({ error: "cliente_id es requerido" });
-        }
+    if (!cliente_id) {
+      return res.status(400).json({ error: "cliente_id es requerido" });
+    }
 
-        if (!Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({
-                error: "items debe ser un array con al menos un producto",
-            });
-        }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        error: "items debe ser un array con al menos un producto",
+      });
+    }
 
-        // 1) Traer info de productos (precio)
-        const productoIds = items.map((it) => it.producto_id);
+    // ✅ Validar items (mínimo)
+    for (const it of items) {
+      if (!it.producto_id) {
+        return res.status(400).json({ error: "items contiene producto_id inválido" });
+      }
+      const cant = Number(it.cantidad || 0);
+      if (!Number.isFinite(cant) || cant <= 0) {
+        return res.status(400).json({ error: "items contiene cantidad inválida" });
+      }
+    }
 
-        const { data: productos, error: prodError } = await supabase
-            .from("producto")
-            .select("id, precio")
-            .in("id", productoIds);
+    // 1) Traer info real de productos (precio + tipo_entrega)
+    const productoIds = [...new Set(items.map((it) => it.producto_id))];
 
-        if (prodError) throw prodError;
+    const { data: productos, error: prodError } = await supabase
+      .from("producto")
+      .select("id, precio, tipo_entrega, subir_web")
+      .in("id", productoIds);
 
-        if (!productos || productos.length !== productoIds.length) {
-            return res.status(400).json({
-                error:
-                    "No se pudieron encontrar todos los productos indicados. Verificar IDs.",
-            });
-        }
+    if (prodError) throw prodError;
 
-        const mapPrecio = new Map();
-        for (const p of productos) {
-            mapPrecio.set(p.id, Number(p.precio));
-        }
+    if (!productos || productos.length !== productoIds.length) {
+      return res.status(400).json({
+        error: "No se pudieron encontrar todos los productos indicados. Verificar IDs.",
+      });
+    }
 
-        // 2) Calcular subtotales y total bruto (antes de cupones)
-        const detalles = items.map((it) => {
-            const precio_unitario = mapPrecio.get(it.producto_id);
-            const cantidad = Number(it.cantidad || 0);
-            const subtotal = precio_unitario * cantidad;
-            return {
-                producto_id: it.producto_id,
-                cantidad,
-                precio_unitario,
-                subtotal,
-            };
-        });
+    // (Opcional) evitar comprar productos no publicados
+    // Si querés permitir igual, borrá esta validación
+    const noPublicados = productos.filter((p) => p.subir_web !== true);
+    if (noPublicados.length > 0) {
+      return res.status(400).json({
+        error: "Hay productos no disponibles para el shop (no publicados).",
+        productos_no_publicados: noPublicados.map((p) => p.id),
+      });
+    }
 
-        const totalBruto = detalles.reduce((acc, d) => acc + d.subtotal, 0);
+    const mapProducto = new Map();
+    for (const p of productos) {
+      mapProducto.set(p.id, {
+        precio: Number(p.precio),
+        tipo_entrega: p.tipo_entrega,
+      });
+    }
 
-        // 3) Aplicar cupón si viene código
-        let descuentoMonto = 0;
-        let totalFinal = totalBruto;
-        let cuponAplicado = null;
-        let cuponMotivoNoAplicado = null;
+    // 2) Calcular subtotales y total bruto
+    const detalles = items.map((it) => {
+      const info = mapProducto.get(it.producto_id);
+      const precio_unitario = info.precio;
+      const cantidad = Number(it.cantidad || 0);
+      const subtotal = precio_unitario * cantidad;
 
-        if (codigo_cupon) {
-            const ahoraISO = new Date().toISOString();
+      return {
+        producto_id: it.producto_id,
+        cantidad,
+        precio_unitario,
+        subtotal,
+        tipo_entrega: info.tipo_entrega, // ✅ útil para respuesta/front/debug
+      };
+    });
 
-            const { data: cupon, error: cuponError } = await supabase
-                .from("cupon_cliente")
-                .select(
-                    `
+    const totalBruto = detalles.reduce((acc, d) => acc + d.subtotal, 0);
+
+    // 3) Cupón (tu lógica actual)
+    let descuentoMonto = 0;
+    let totalFinal = totalBruto;
+    let cuponAplicado = null;
+    let cuponMotivoNoAplicado = null;
+
+    if (codigo_cupon) {
+      const ahoraISO = new Date().toISOString();
+
+      const { data: cupon, error: cuponError } = await supabase
+        .from("cupon_cliente")
+        .select(`
           id,
           codigo,
           cliente_id,
@@ -881,98 +633,130 @@ export const crearVentaWeb = async (req, res) => {
           uso_maximo,
           usos_realizados,
           estado_id
-        `
-                )
-                .eq("cliente_id", cliente_id)
-                .eq("codigo", codigo_cupon)
-                .maybeSingle();
+        `)
+        .eq("cliente_id", cliente_id)
+        .eq("codigo", codigo_cupon)
+        .maybeSingle();
 
-            if (cuponError) throw cuponError;
+      if (cuponError) throw cuponError;
 
-            // Si el cupón no existe para ese cliente → error (código inventado / mal tipeado)
-            if (!cupon) {
-                return res.status(400).json({
-                    error: "Cupón no válido para este cliente",
-                });
-            }
+      if (!cupon) {
+        return res.status(400).json({ error: "Cupón no válido para este cliente" });
+      }
 
-            // Verificar estado (ACTIVO) para ambito 'cupon'
-            const { data: estadoCupon, error: estError } = await supabase
-                .from("estado")
-                .select("id, nombre")
-                .eq("id", cupon.estado_id)
-                .eq("ambito", "cupon")
-                .maybeSingle();
+      const { data: estadoCupon, error: estError } = await supabase
+        .from("estado")
+        .select("id, nombre")
+        .eq("id", cupon.estado_id)
+        .eq("ambito", "cupon")
+        .maybeSingle();
 
-            if (estError) throw estError;
+      if (estError) throw estError;
 
-            // Si NO está activo → NO frenamos la compra, solo no aplicamos el cupón
-            if (!estadoCupon || estadoCupon.nombre !== "ACTIVO") {
-                cuponMotivoNoAplicado = "El cupón no está activo (ya usado o deshabilitado)";
-            } else if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
-                cuponMotivoNoAplicado = "El cupón aún no está vigente";
-            } else if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
-                cuponMotivoNoAplicado = "El cupón está vencido";
-            } else if (
-                cupon.uso_maximo != null &&
-                cupon.usos_realizados != null &&
-                cupon.usos_realizados >= cupon.uso_maximo
-            ) {
-                cuponMotivoNoAplicado = "El cupón ya fue utilizado el máximo de veces";
-            } else {
-                // ✅ Todas las validaciones OK → aplicamos el cupón
-                if (cupon.descuento_monto != null) {
-                    descuentoMonto = Number(cupon.descuento_monto);
-                } else if (cupon.descuento_porcentaje != null) {
-                    descuentoMonto = totalBruto * (cupon.descuento_porcentaje / 100);
-                }
-
-                if (descuentoMonto < 0) descuentoMonto = 0;
-                if (descuentoMonto > totalBruto) descuentoMonto = totalBruto;
-
-                totalFinal = totalBruto - descuentoMonto;
-                cuponAplicado = cupon;
-            }
+      if (!estadoCupon || estadoCupon.nombre !== "ACTIVO") {
+        cuponMotivoNoAplicado = "El cupón no está activo (ya usado o deshabilitado)";
+      } else if (cupon.valido_desde && cupon.valido_desde > ahoraISO) {
+        cuponMotivoNoAplicado = "El cupón aún no está vigente";
+      } else if (cupon.valido_hasta && cupon.valido_hasta < ahoraISO) {
+        cuponMotivoNoAplicado = "El cupón está vencido";
+      } else if (
+        cupon.uso_maximo != null &&
+        cupon.usos_realizados != null &&
+        cupon.usos_realizados >= cupon.uso_maximo
+      ) {
+        cuponMotivoNoAplicado = "El cupón ya fue utilizado el máximo de veces";
+      } else {
+        if (cupon.descuento_monto != null) {
+          descuentoMonto = Number(cupon.descuento_monto);
+        } else if (cupon.descuento_porcentaje != null) {
+          descuentoMonto = totalBruto * (cupon.descuento_porcentaje / 100);
         }
 
-        // 4) Determinar estado venta
-        const estadoNombreFinal = estado_nombre || "PENDIENTE_PAGO";
+        if (descuentoMonto < 0) descuentoMonto = 0;
+        if (descuentoMonto > totalBruto) descuentoMonto = totalBruto;
 
-        const { data: estadoVenta, error: estadoError } = await supabase
-            .from("estado")
-            .select("id")
-            .eq("nombre", estadoNombreFinal)
-            .eq("ambito", "venta")
-            .maybeSingle();
+        totalFinal = totalBruto - descuentoMonto;
+        cuponAplicado = cupon;
+      }
+    }
 
-        if (estadoError) throw estadoError;
+    // 4) ✅ Capa Operación: tipo_entrega_venta + seña
+    const tiposEntrega = new Set(detalles.map((d) => d.tipo_entrega));
+    const hayPedido = tiposEntrega.has("A_PEDIDO_24H");
+    const hayLocal = tiposEntrega.has("EN_STOCK_LOCAL");
+    const hayConsultar = tiposEntrega.has("SIN_STOCK_CONSULTAR");
 
-        if (!estadoVenta) {
-            return res.status(500).json({
-                error: `No se encontró estado '${estadoNombreFinal}' para ambito 'venta'.`,
-            });
-        }
+    // Regla de negocio: ¿permitís vender "SIN_STOCK_CONSULTAR"?
+    // Si querés BLOQUEAR, descomentá:
+    // if (hayConsultar) {
+    //   return res.status(400).json({ error: "Hay productos marcados como CONSULTAR STOCK. No se puede finalizar compra." });
+    // }
 
-        const montoAbonadoNum =
-            monto_abonado != null ? Number(monto_abonado) : 0;
-        const saldo = totalFinal - montoAbonadoNum;
+    let tipoEntregaVenta = "LOCAL";
+    if (hayPedido && (hayLocal || hayConsultar)) tipoEntregaVenta = "MIXTA";
+    else if (hayPedido) tipoEntregaVenta = "A_PEDIDO";
 
-        // 5) Insertar venta
-        const { data: ventaInsert, error: ventaError } = await supabase
-            .from("venta")
-            .insert([
-                {
-                    fecha: new Date().toISOString(),
-                    total: totalFinal,
-                    cliente_id,
-                    monto_abonado: montoAbonadoNum,
-                    saldo,
-                    canal: "web_shop",
-                    estado_id: estadoVenta.id,
-                },
-            ])
-            .select(
-                `
+    const requiereCompraProveedor = hayPedido;
+    const requiereSenia = hayPedido;
+
+    // Seña mínima 50% del totalFinal (después de cupón)
+    const seniaMinima = requiereSenia ? Math.round(Number(totalFinal) * 0.5) : 0;
+
+    const montoAbonadoNum = monto_abonado != null ? Number(monto_abonado) : 0;
+    if (!Number.isFinite(montoAbonadoNum) || montoAbonadoNum < 0) {
+      return res.status(400).json({ error: "monto_abonado inválido" });
+    }
+
+    if (requiereSenia && montoAbonadoNum < seniaMinima) {
+      return res.status(400).json({
+        error: "Seña insuficiente para carrito con productos A_PEDIDO_24H",
+        requiere_senia: true,
+        senia_minima: seniaMinima,
+        total_final: totalFinal,
+        monto_abonado: montoAbonadoNum,
+      });
+    }
+
+    // 5) Determinar estado venta (tu lógica)
+    const estadoNombreFinal = estado_nombre || "PENDIENTE_PAGO";
+
+    const { data: estadoVenta, error: estadoError } = await supabase
+      .from("estado")
+      .select("id")
+      .eq("nombre", estadoNombreFinal)
+      .eq("ambito", "venta")
+      .maybeSingle();
+
+    if (estadoError) throw estadoError;
+    if (!estadoVenta) {
+      return res.status(500).json({
+        error: `No se encontró estado '${estadoNombreFinal}' para ambito 'venta'.`,
+      });
+    }
+
+    const saldo = Number(totalFinal) - montoAbonadoNum;
+
+    // 6) Insertar venta (ahora con campos operativos)
+    const { data: ventaInsert, error: ventaError } = await supabase
+      .from("venta")
+      .insert([
+        {
+          fecha: new Date().toISOString(),
+          total: totalFinal,
+          cliente_id,
+          monto_abonado: montoAbonadoNum,
+          saldo,
+          canal: "web_shop",
+          estado_id: estadoVenta.id,
+
+          // ✅ Operación
+          tipo_entrega_venta: tipoEntregaVenta,
+          requiere_compra_proveedor: requiereCompraProveedor,
+          requiere_senia: requiereSenia,
+          senia_minima: requiereSenia ? seniaMinima : null,
+        },
+      ])
+      .select(`
         id,
         fecha,
         total,
@@ -980,94 +764,101 @@ export const crearVentaWeb = async (req, res) => {
         monto_abonado,
         saldo,
         canal,
-        estado_id
-      `
-            )
-            .single();
+        estado_id,
+        tipo_entrega_venta,
+        requiere_compra_proveedor,
+        requiere_senia,
+        senia_minima
+      `)
+      .single();
 
-        if (ventaError) throw ventaError;
+    if (ventaError) throw ventaError;
 
-        const ventaId = ventaInsert.id;
+    const ventaId = ventaInsert.id;
 
-        // 6) Insertar detalle_venta
-        const detallesConVenta = detalles.map((d) => ({
-            venta_id: ventaId,
-            producto_id: d.producto_id,
-            cantidad: d.cantidad,
-            precio_unitario: d.precio_unitario,
-            subtotal: d.subtotal,
-        }));
+    // 7) Insertar detalle_venta
+    const detallesConVenta = detalles.map((d) => ({
+      venta_id: ventaId,
+      producto_id: d.producto_id,
+      cantidad: d.cantidad,
+      precio_unitario: d.precio_unitario,
+      subtotal: d.subtotal,
+      // (si tu tabla detalle_venta no tiene tipo_entrega, no lo guardes)
+    }));
 
-        const { data: detallesInsert, error: detalleError } = await supabase
-            .from("detalle_venta")
-            .insert(detallesConVenta)
-            .select(
-                `
+    const { data: detallesInsert, error: detalleError } = await supabase
+      .from("detalle_venta")
+      .insert(detallesConVenta)
+      .select(`
         id,
         venta_id,
         producto_id,
         cantidad,
         precio_unitario,
         subtotal
-      `
-            );
+      `);
 
-        if (detalleError) throw detalleError;
+    if (detalleError) throw detalleError;
 
-        // 7) Si hubo cupón aplicado, marcarlo como usado (incrementar usos, y si llegó al max → USADO)
-        if (cuponAplicado) {
-            const usosNuevos = (cuponAplicado.usos_realizados || 0) + 1;
-            let nuevoEstadoId = cuponAplicado.estado_id;
+    // 8) Cupón aplicado → actualizar usos (⚠️ riesgo de concurrencia, ver recomendaciones)
+    if (cuponAplicado) {
+      const usosNuevos = (cuponAplicado.usos_realizados || 0) + 1;
+      let nuevoEstadoId = cuponAplicado.estado_id;
 
-            if (
-                cuponAplicado.uso_maximo != null &&
-                usosNuevos >= cuponAplicado.uso_maximo
-            ) {
-                // buscar estado USADO
-                const { data: estadoUsado, error: estUsadoErr } = await supabase
-                    .from("estado")
-                    .select("id")
-                    .eq("nombre", "USADO")
-                    .eq("ambito", "cupon")
-                    .maybeSingle();
+      if (cuponAplicado.uso_maximo != null && usosNuevos >= cuponAplicado.uso_maximo) {
+        const { data: estadoUsado, error: estUsadoErr } = await supabase
+          .from("estado")
+          .select("id")
+          .eq("nombre", "USADO")
+          .eq("ambito", "cupon")
+          .maybeSingle();
 
-                if (!estUsadoErr && estadoUsado) {
-                    nuevoEstadoId = estadoUsado.id;
-                }
-            }
-
-            const { error: updCuponErr } = await supabase
-                .from("cupon_cliente")
-                .update({
-                    usos_realizados: usosNuevos,
-                    estado_id: nuevoEstadoId,
-                })
-                .eq("id", cuponAplicado.id);
-
-            if (updCuponErr) {
-                console.error("Error actualizando cupón tras la venta:", updCuponErr);
-            }
+        if (!estUsadoErr && estadoUsado) {
+          nuevoEstadoId = estadoUsado.id;
         }
+      }
 
-        return res.status(201).json({
-            message: "Venta web creada correctamente",
-            venta: ventaInsert,
-            detalles: detallesInsert,
-            total_bruto: totalBruto,
-            descuento: descuentoMonto,
-            total_final: totalFinal,
-            codigo_cupon: cuponAplicado ? codigo_cupon : null,
-            cupon_aplicado: !!cuponAplicado,
-            cupon_motivo_no_aplicado: cuponMotivoNoAplicado,
-        });
-    } catch (err) {
-        console.error("Error en crearVentaWeb:", err);
-        return res.status(500).json({
-            error: "Error interno al crear venta web",
-            detail: err.message,
-        });
+      const { error: updCuponErr } = await supabase
+        .from("cupon_cliente")
+        .update({
+          usos_realizados: usosNuevos,
+          estado_id: nuevoEstadoId,
+        })
+        .eq("id", cuponAplicado.id);
+
+      if (updCuponErr) {
+        console.error("Error actualizando cupón tras la venta:", updCuponErr);
+      }
     }
+
+    return res.status(201).json({
+      message: "Venta web creada correctamente",
+      venta: ventaInsert,
+      detalles: detallesInsert,
+
+      total_bruto: totalBruto,
+      descuento: descuentoMonto,
+      total_final: totalFinal,
+
+      codigo_cupon: cuponAplicado ? codigo_cupon : null,
+      cupon_aplicado: !!cuponAplicado,
+      cupon_motivo_no_aplicado: cuponMotivoNoAplicado,
+
+      // ✅ datos para el front/checkout
+      requiere_senia: requiereSenia,
+      senia_minima: requiereSenia ? seniaMinima : 0,
+      tipo_entrega_venta: tipoEntregaVenta,
+      requiere_compra_proveedor: requiereCompraProveedor,
+    });
+  } catch (err) {
+    console.error("Error en crearVentaWeb:", err);
+    return res.status(500).json({
+      error: "Error interno al crear venta web",
+      detail: err.message,
+    });
+  }
 };
+
 
 
 // const sendCouponEmail = async (cupon, cliente) => {
