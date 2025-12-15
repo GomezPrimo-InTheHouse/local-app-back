@@ -151,154 +151,154 @@ export const createVenta = async (req, res) => {
 
 //nuevo getVentas con filtro por canal de venta
 // controllers/ventaController.js (o donde lo tengas definido)
-// export const getVentas = async (req, res) => {
-//   try {
-//     const { canal } = req.query; // opcional: "local", "web_shop" o "todos"
-
-//     let query = supabase
-//       .from("venta")
-//       .select(
-//         `
-//         id,
-//         fecha,
-//         total,
-//         monto_abonado,
-//         saldo,
-//         canal,
-//         cliente:cliente_id (
-//           id,
-//           nombre,
-//           apellido
-//         ),
-//         detalle_venta (
-//           id,
-//           producto_id,
-//           cantidad,
-//           precio_unitario,
-//           subtotal,
-//           producto:producto_id (
-//             id,
-//             nombre,
-//             costo
-//           )
-//         )
-//       `
-//       )
-//       .in("estado_id", [19, 26])
-//       .order("fecha", { ascending: false });
-
-//     // ✅ Si viene canal y NO es "todos", filtramos
-//     if (canal && canal !== "todos") {
-//       query = query.eq("canal", canal);
-//     }
-
-//     const { data, error } = await query;
-
-//     if (error) throw error;
-
-//     res.status(200).json({ success: true, data });
-//   } catch (error) {
-//     console.error("Error en getVentas:", error.message);
-//     res.status(500).json({ success: false, error: "Error al obtener ventas" });
-//   }
-// };
 export const getVentas = async (req, res) => {
   try {
-    const { canal } = req.query; // "local", "web_shop" o "todos" (opcional)
-
-    // ✅ Regla: solo traemos cupón si hay posibilidad de ventas web en el resultado
-    const includeCupon =
-      !canal || canal === "web_shop" || canal === "todos";
-
-    // Base select (sin cupón)
-    const baseSelect = `
-      id,
-      fecha,
-      total,
-      monto_abonado,
-      saldo,
-      canal,
-      cliente:cliente_id (
-        id,
-        nombre,
-        apellido,
-        dni,
-        email
-      ),
-      detalle_venta (
-        id,
-        producto_id,
-        cantidad,
-        precio_unitario,
-        subtotal,
-        producto:producto_id (
-          id,
-          nombre,
-          costo
-        )
-      )
-    `;
-
-    // Select final (agrega cupón si corresponde)
-    const selectWithOptionalCupon = includeCupon
-      ? `${baseSelect},
-         cupon:cupon_id (
-           id,
-           codigo,
-           descripcion,
-           descuento_porcentaje,
-           descuento_monto
-         )`
-      : baseSelect;
+    const { canal } = req.query; // opcional: "local", "web_shop" o "todos"
 
     let query = supabase
       .from("venta")
-      .select(selectWithOptionalCupon)
+      .select(
+        `
+        id,
+        fecha,
+        total,
+        monto_abonado,
+        saldo,
+        canal,
+        cliente:cliente_id (
+          id,
+          nombre,
+          apellido
+        ),
+        detalle_venta (
+          id,
+          producto_id,
+          cantidad,
+          precio_unitario,
+          subtotal,
+          producto:producto_id (
+            id,
+            nombre,
+            costo
+          )
+        )
+      `
+      )
       .in("estado_id", [19, 26])
       .order("fecha", { ascending: false });
 
-    // ✅ Filtro por canal (si viene y no es "todos")
+    // ✅ Si viene canal y NO es "todos", filtramos
     if (canal && canal !== "todos") {
       query = query.eq("canal", canal);
     }
 
     const { data, error } = await query;
+
     if (error) throw error;
 
-  // ✅ Calcular descuento real SOLO para web_shop
-const enriched = (data || []).map((v) => {
-  const detalles = Array.isArray(v.detalle_venta) ? v.detalle_venta : [];
-  const total = Number(v.total) || 0;
-
-  let subtotal_items = 0;
-  let descuento_real = 0;
-
-  if (v.canal === "web_shop") {
-    subtotal_items = detalles.reduce((acc, d) => {
-      const st =
-        Number(d.subtotal) ||
-        (Number(d.cantidad) || 0) * (Number(d.precio_unitario) || 0);
-      return acc + st;
-    }, 0);
-
-    descuento_real = Math.max(0, subtotal_items - total);
-  }
-
-  return {
-    ...v,
-    // opcional: si no querés mostrar estos campos en local, podés dejarlos igual en 0
-    subtotal_items,
-    descuento_real,
-
-    // opcional: coherencia estricta
-    cupon: v.canal === "web_shop" ? (v.cupon ?? null) : null,
-  };
-});
+    res.status(200).json({ success: true, data });
   } catch (error) {
     console.error("Error en getVentas:", error.message);
     res.status(500).json({ success: false, error: "Error al obtener ventas" });
   }
 };
+// export const getVentas = async (req, res) => {
+//   try {
+//     const { canal } = req.query; // "local", "web_shop" o "todos" (opcional)
+
+//     // ✅ Regla: solo traemos cupón si hay posibilidad de ventas web en el resultado
+//     const includeCupon =
+//       !canal || canal === "web_shop" || canal === "todos";
+
+//     // Base select (sin cupón)
+//     const baseSelect = `
+//       id,
+//       fecha,
+//       total,
+//       monto_abonado,
+//       saldo,
+//       canal,
+//       cliente:cliente_id (
+//         id,
+//         nombre,
+//         apellido,
+//         dni,
+//         email
+//       ),
+//       detalle_venta (
+//         id,
+//         producto_id,
+//         cantidad,
+//         precio_unitario,
+//         subtotal,
+//         producto:producto_id (
+//           id,
+//           nombre,
+//           costo
+//         )
+//       )
+//     `;
+
+//     // Select final (agrega cupón si corresponde)
+//     const selectWithOptionalCupon = includeCupon
+//       ? `${baseSelect},
+//          cupon:cupon_id (
+//            id,
+//            codigo,
+//            descripcion,
+//            descuento_porcentaje,
+//            descuento_monto
+//          )`
+//       : baseSelect;
+
+//     let query = supabase
+//       .from("venta")
+//       .select(selectWithOptionalCupon)
+//       .in("estado_id", [19, 26])
+//       .order("fecha", { ascending: false });
+
+//     // ✅ Filtro por canal (si viene y no es "todos")
+//     if (canal && canal !== "todos") {
+//       query = query.eq("canal", canal);
+//     }
+
+//     const { data, error } = await query;
+//     if (error) throw error;
+
+//   // ✅ Calcular descuento real SOLO para web_shop
+// const enriched = (data || []).map((v) => {
+//   const detalles = Array.isArray(v.detalle_venta) ? v.detalle_venta : [];
+//   const total = Number(v.total) || 0;
+
+//   let subtotal_items = 0;
+//   let descuento_real = 0;
+
+//   if (v.canal === "web_shop") {
+//     subtotal_items = detalles.reduce((acc, d) => {
+//       const st =
+//         Number(d.subtotal) ||
+//         (Number(d.cantidad) || 0) * (Number(d.precio_unitario) || 0);
+//       return acc + st;
+//     }, 0);
+
+//     descuento_real = Math.max(0, subtotal_items - total);
+//   }
+
+//   return {
+//     ...v,
+//     // opcional: si no querés mostrar estos campos en local, podés dejarlos igual en 0
+//     subtotal_items,
+//     descuento_real,
+
+//     // opcional: coherencia estricta
+//     cupon: v.canal === "web_shop" ? (v.cupon ?? null) : null,
+//   };
+// });
+//   } catch (error) {
+//     console.error("Error en getVentas:", error.message);
+//     res.status(500).json({ success: false, error: "Error al obtener ventas" });
+//   }
+// };
 
 
 // ✅ Obtener una venta por ID
