@@ -1047,3 +1047,115 @@ export const testResend = async (req, res) => {
         return res.status(500).json({ error: err.message });
     }
 };
+
+
+// =========================================================
+// GET /shop/ventas/:id
+// Obtener venta web por ID (detalles + totales + cupón)
+// =========================================================
+
+export const getVentaShopById = async (req, res) => {
+  try {
+    const ventaId = Number(req.params.id);
+
+    if (!Number.isFinite(ventaId) || ventaId <= 0) {
+      return res.status(400).json({ error: "id de venta inválido" });
+    }
+
+    // 1) Traer venta + estado + cupon (por cupon_id)
+    const { data: ventaRow, error: ventaErr } = await supabase
+      .from("venta")
+      .select(
+        `
+        id,
+        fecha,
+        canal,
+        total,
+        cliente_id,
+        monto_abonado,
+        saldo,
+        cupon_id,
+        estado:estado_id (
+          id,
+          nombre,
+          ambito
+        ),
+        cupon:cupon_id (
+          id,
+          codigo,
+          descripcion,
+          descuento_porcentaje,
+          descuento_monto
+        )
+      `
+      )
+      .eq("id", ventaId)
+      .maybeSingle();
+
+    if (ventaErr) throw ventaErr;
+
+    if (!ventaRow) {
+      return res.status(404).json({ error: "Venta no encontrada" });
+    }
+
+    // 2) Traer detalles + nombre de producto
+    const { data: detallesRows, error: detErr } = await supabase
+      .from("detalle_venta")
+      .select(
+        `
+        id,
+        venta_id,
+        producto_id,
+        cantidad,
+        subtotal,
+        producto:producto_id (
+          id,
+          nombre
+        )
+      `
+      )
+      .eq("venta_id", ventaId)
+      .order("id", { ascending: true });
+
+    if (detErr) throw detErr;
+
+    const detalles = (detallesRows || []).map((d) => {
+      const prod = Array.isArray(d.producto) ? d.producto[0] : d.producto;
+      return {
+        producto_id: d.producto_id,
+        producto_nombre: prod?.nombre ?? null,
+        cantidad: d.cantidad,
+        subtotal: Number(d.subtotal ?? 0),
+      };
+    });
+
+    // 3) Calcular totales
+    const total_bruto = detalles.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
+    const total_final = Number(ventaRow.total ?? 0);
+    const descuento = Math.max(0, total_bruto - total_final);
+
+    // 4) Respuesta final (shape requerido)
+    return res.status(200).json({
+      venta: {
+        id: ventaRow.id,
+        fecha: ventaRow.fecha,
+        canal: ventaRow.canal,
+        cliente_id: ventaRow.cliente_id,
+        monto_abonado: ventaRow.monto_abonado,
+        saldo: ventaRow.saldo,
+        estado_nombre: ventaRow.estado?.nombre ?? null,
+      },
+      detalles,
+      total_bruto,
+      descuento,
+      total_final,
+      codigo_cupon: ventaRow.cupon?.codigo ?? null,
+    });
+  } catch (err) {
+    console.error("Error en getVentaShopById:", err);
+    return res.status(500).json({
+      error: "Error interno al obtener venta",
+      detail: err.message,
+    });
+  }
+};

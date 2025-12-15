@@ -7,7 +7,8 @@ import {
   obtenerTopVistos,
   validarCupon,
   obtenerCuponesCliente,
-    testResend,
+  testResend,
+  getVentaShopById,
 } from "../../controllers/shop/shop.controller.js";
 
 const router = Router();
@@ -18,6 +19,7 @@ router.post("/visualizaciones", registrarVisualizacionProducto);
 router.post("/ventas", crearVentaWeb);
 router.get("/estadisticas/top-vistos", obtenerTopVistos);
 router.post("/test-email", testResend);
+router.get("/ventas/:id", getVentaShopById);
 
 
 // CUPONES
