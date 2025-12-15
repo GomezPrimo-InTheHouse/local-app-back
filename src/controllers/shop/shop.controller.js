@@ -1054,6 +1054,18 @@ export const testResend = async (req, res) => {
 // Obtener venta web por ID (detalles + totales + cupón)
 // =========================================================
 
+// =========================================================
+// GET /shop/ventas/:id
+// Devuelve:
+// {
+//   venta: { ...incluye estado_nombre, cliente embebido, cupon embebido },
+//   detalles: [{ producto_id, producto_nombre, cantidad, precio_unitario, subtotal }],
+//   total_bruto,
+//   descuento,
+//   total_final,
+//   codigo_cupon
+// }
+// =========================================================
 export const getVentaShopById = async (req, res) => {
   try {
     const ventaId = Number(req.params.id);
@@ -1062,7 +1074,7 @@ export const getVentaShopById = async (req, res) => {
       return res.status(400).json({ error: "id de venta inválido" });
     }
 
-    // 1) Traer venta + estado + cupon (por cupon_id)
+    // 1) Traer venta + estado + cliente + cupón (por cupon_id)
     const { data: ventaRow, error: ventaErr } = await supabase
       .from("venta")
       .select(
@@ -1075,17 +1087,40 @@ export const getVentaShopById = async (req, res) => {
         monto_abonado,
         saldo,
         cupon_id,
+
         estado:estado_id (
           id,
           nombre,
           ambito
         ),
+
+        cliente:cliente_id (
+          id,
+          nombre,
+          apellido,
+          dni,
+          email,
+          direccion,
+          celular,
+          celular_contacto,
+          canal_alta
+        ),
+
         cupon:cupon_id (
           id,
           codigo,
           descripcion,
           descuento_porcentaje,
-          descuento_monto
+          descuento_monto,
+          valido_desde,
+          valido_hasta,
+          uso_maximo,
+          usos_realizados,
+          estado:estado_id (
+            id,
+            nombre,
+            ambito
+          )
         )
       `
       )
@@ -1107,6 +1142,7 @@ export const getVentaShopById = async (req, res) => {
         venta_id,
         producto_id,
         cantidad,
+        precio_unitario,
         subtotal,
         producto:producto_id (
           id,
@@ -1125,32 +1161,80 @@ export const getVentaShopById = async (req, res) => {
         producto_id: d.producto_id,
         producto_nombre: prod?.nombre ?? null,
         cantidad: d.cantidad,
+        precio_unitario: Number(d.precio_unitario ?? 0),
         subtotal: Number(d.subtotal ?? 0),
       };
     });
 
-    // 3) Calcular totales
+    // 3) Totales
     const total_bruto = detalles.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
     const total_final = Number(ventaRow.total ?? 0);
     const descuento = Math.max(0, total_bruto - total_final);
 
-    // 4) Respuesta final (shape requerido)
+    // 4) Respuesta final
     return res.status(200).json({
-      venta: {
-        id: ventaRow.id,
-        fecha: ventaRow.fecha,
-        canal: ventaRow.canal,
-        cliente_id: ventaRow.cliente_id,
-        monto_abonado: ventaRow.monto_abonado,
-        saldo: ventaRow.saldo,
-        estado_nombre: ventaRow.estado?.nombre ?? null,
-      },
-      detalles,
-      total_bruto,
-      descuento,
-      total_final,
-      codigo_cupon: ventaRow.cupon?.codigo ?? null,
-    });
+  venta: {
+    id: ventaRow.id,
+    fecha: ventaRow.fecha,
+    canal: ventaRow.canal,
+
+    // importes (venta)
+    total_final,
+    monto_abonado: Number(ventaRow.monto_abonado ?? 0),
+    saldo: Number(ventaRow.saldo ?? 0),
+
+    // ✅ DUPLICADOS PARA FRONT ULTRA-FRIENDLY
+    total_bruto,
+    descuento,
+    total_final,
+
+    // estado
+    estado_id: ventaRow.estado?.id ?? null,
+    estado_nombre: ventaRow.estado?.nombre ?? null,
+
+    // cliente embebido
+    cliente: ventaRow.cliente
+      ? {
+          id: ventaRow.cliente.id,
+          nombre: ventaRow.cliente.nombre ?? null,
+          apellido: ventaRow.cliente.apellido ?? null,
+          dni: ventaRow.cliente.dni ?? null,
+          email: ventaRow.cliente.email ?? null,
+          direccion: ventaRow.cliente.direccion ?? null,
+          celular: ventaRow.cliente.celular ?? null,
+          celular_contacto: ventaRow.cliente.celular_contacto ?? null,
+          canal_alta: ventaRow.cliente.canal_alta ?? null,
+        }
+      : null,
+
+    // cupón embebido (si existe)
+    cupon: ventaRow.cupon
+      ? {
+          id: ventaRow.cupon.id,
+          codigo: ventaRow.cupon.codigo ?? null,
+          descripcion: ventaRow.cupon.descripcion ?? null,
+          descuento_porcentaje: ventaRow.cupon.descuento_porcentaje ?? null,
+          descuento_monto: ventaRow.cupon.descuento_monto ?? null,
+          valido_desde: ventaRow.cupon.valido_desde ?? null,
+          valido_hasta: ventaRow.cupon.valido_hasta ?? null,
+          uso_maximo: ventaRow.cupon.uso_maximo ?? null,
+          usos_realizados: ventaRow.cupon.usos_realizados ?? null,
+          estado_id: ventaRow.cupon.estado?.id ?? null,
+          estado_nombre: ventaRow.cupon.estado?.nombre ?? null,
+        }
+      : null,
+  },
+
+  detalles,
+
+  // Se mantienen también arriba por compatibilidad/claridad
+  total_bruto,
+  descuento,
+  total_final,
+
+  codigo_cupon: ventaRow.cupon?.codigo ?? null,
+});
+
   } catch (err) {
     console.error("Error en getVentaShopById:", err);
     return res.status(500).json({

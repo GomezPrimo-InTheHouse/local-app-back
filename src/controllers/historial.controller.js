@@ -166,12 +166,15 @@ export const getHistorialClienteByClienteId = async (req, res) => {
   try {
     const { clienteId } = req.params;
     const id = Number(clienteId);
+
     if (!Number.isFinite(id)) {
-      return res.status(400).json({ error: 'clienteId inválido' });
+      return res.status(400).json({ error: "clienteId inválido" });
     }
 
-    // SQL equivalente al RPC, pero filtrando por cliente_id
-    const SQL = `
+    // =========================
+    // 1) EQUIPOS / INGRESOS / PRESUPUESTOS
+    // =========================
+    const SQL_EQUIPOS = `
       SELECT
         e.cliente_id,
         e.id AS equipo_id,
@@ -202,19 +205,67 @@ export const getHistorialClienteByClienteId = async (req, res) => {
                p.fecha         DESC NULLS LAST;
     `;
 
-    const { rows: data } = await pool.query(SQL, [id]);
+    // =========================
+    // 2) VENTAS + DETALLES (+ producto, estado, cupon)
+    // =========================
+    const SQL_VENTAS = `
+      SELECT
+        v.cliente_id,
+        v.id AS venta_id,
+        v.fecha AS fecha_venta,
+        v.total,
+        v.monto_abonado,
+        v.saldo,
+        v.canal,
+        ev.id AS estado_venta_id,
+        ev.nombre AS estado_venta_nombre,
 
-    if (!data || data.length === 0) {
-      return res.status(404).json({ error: 'No se encontraron equipos para este cliente.' });
+        v.cupon_id,
+        cc.codigo AS cupon_codigo,
+        cc.descuento_porcentaje AS cupon_descuento_porcentaje,
+        cc.descuento_monto AS cupon_descuento_monto,
+
+        dv.id AS detalle_venta_id,
+        dv.producto_id,
+        pr.nombre AS producto_nombre,
+        dv.cantidad,
+        dv.precio_unitario,
+        dv.subtotal
+      FROM venta v
+      LEFT JOIN estado ev        ON ev.id = v.estado_id
+      LEFT JOIN cupon_cliente cc ON cc.id = v.cupon_id
+      LEFT JOIN detalle_venta dv ON dv.venta_id = v.id
+      LEFT JOIN producto pr      ON pr.id = dv.producto_id
+      WHERE v.cliente_id = $1
+      ORDER BY v.fecha DESC NULLS LAST,
+               v.id DESC,
+               dv.id ASC NULLS LAST;
+    `;
+
+    // Ejecutamos ambas consultas en paralelo
+    const [equiposResp, ventasResp] = await Promise.all([
+      pool.query(SQL_EQUIPOS, [id]),
+      pool.query(SQL_VENTAS, [id]),
+    ]);
+
+    const equiposRows = equiposResp.rows || [];
+    const ventasRows = ventasResp.rows || [];
+
+    // Si no hay nada, devolvemos 404
+    if (equiposRows.length === 0 && ventasRows.length === 0) {
+      return res.status(404).json({ error: "No se encontró historial para este cliente." });
     }
 
-    const cliente_id = data[0].cliente_id;
+    // cliente_id consistente
+    const cliente_id = equiposRows[0]?.cliente_id ?? ventasRows[0]?.cliente_id ?? id;
 
-    // === Reagrupado + ordenado (desc) para mantener mismo shape final ===
-    const equiposMap = {};
+    // =========================
+    // ARMAR EQUIPOS (tu misma lógica)
+    // =========================
     const ts = (d) => (d ? new Date(d).getTime() : -Infinity);
 
-    for (const r of data) {
+    const equiposMap = {};
+    for (const r of equiposRows) {
       if (!equiposMap[r.equipo_id]) {
         equiposMap[r.equipo_id] = {
           equipo_id: r.equipo_id,
@@ -223,7 +274,7 @@ export const getHistorialClienteByClienteId = async (req, res) => {
           modelo: r.modelo,
           problema: r.problema,
           ingresos: {},
-          _maxFecha: -Infinity, // para ordenar equipos por su ingreso más reciente
+          _maxFecha: -Infinity,
         };
       }
 
@@ -233,19 +284,13 @@ export const getHistorialClienteByClienteId = async (req, res) => {
             ingreso_id: r.ingreso_id,
             fecha_ingreso: r.fecha_ingreso,
             fecha_egreso: r.fecha_egreso,
-            estado: {
-              id: r.estado_ingreso_id,
-              nombre: r.estado_ingreso_nombre,
-            },
+            estado: { id: r.estado_ingreso_id, nombre: r.estado_ingreso_nombre },
             presupuestos: [],
           };
         }
 
-        // trackear la fecha más reciente del equipo
         const fi = ts(r.fecha_ingreso);
-        if (fi > equiposMap[r.equipo_id]._maxFecha) {
-          equiposMap[r.equipo_id]._maxFecha = fi;
-        }
+        if (fi > equiposMap[r.equipo_id]._maxFecha) equiposMap[r.equipo_id]._maxFecha = fi;
 
         if (r.presupuesto_id) {
           equiposMap[r.equipo_id].ingresos[r.ingreso_id].presupuestos.push({
@@ -254,16 +299,12 @@ export const getHistorialClienteByClienteId = async (req, res) => {
             costo: r.costo,
             total: r.total,
             observaciones: r.observaciones,
-            estado: {
-              id: r.estado_presupuesto_id,
-              nombre: r.estado_presupuesto_nombre,
-            },
+            estado: { id: r.estado_presupuesto_id, nombre: r.estado_presupuesto_nombre },
           });
         }
       }
     }
 
-    // Ordenar niveles
     const equipos = Object.values(equiposMap)
       .map((eq) => {
         const ingresosOrdenados = Object.values(eq.ingresos)
@@ -284,14 +325,57 @@ export const getHistorialClienteByClienteId = async (req, res) => {
         };
       })
       .sort((a, b) => b._maxFecha - a._maxFecha)
-      .map(({ _maxFecha, ...rest }) => rest); // limpiar campo interno
+      .map(({ _maxFecha, ...rest }) => rest);
 
-    return res.json({ cliente_id, equipos });
+    // =========================
+    // ARMAR VENTAS (venta -> detalles[])
+    // =========================
+    const ventasMap = {};
+
+    for (const r of ventasRows) {
+      if (!ventasMap[r.venta_id]) {
+        ventasMap[r.venta_id] = {
+          venta_id: r.venta_id,
+          fecha: r.fecha_venta,
+          total: r.total,
+          monto_abonado: r.monto_abonado,
+          saldo: r.saldo,
+          canal: r.canal,
+          estado: {
+            id: r.estado_venta_id ?? null,
+            nombre: r.estado_venta_nombre ?? null,
+          },
+          cupon: r.cupon_id
+            ? {
+                id: r.cupon_id,
+                codigo: r.cupon_codigo ?? null,
+                descuento_porcentaje: r.cupon_descuento_porcentaje ?? null,
+                descuento_monto: r.cupon_descuento_monto ?? null,
+              }
+            : null,
+          detalles: [],
+        };
+      }
+
+      if (r.detalle_venta_id) {
+        ventasMap[r.venta_id].detalles.push({
+          detalle_venta_id: r.detalle_venta_id,
+          producto_id: r.producto_id,
+          producto_nombre: r.producto_nombre ?? null,
+          cantidad: r.cantidad,
+          precio_unitario: r.precio_unitario,
+          subtotal: r.subtotal,
+        });
+      }
+    }
+
+    const ventas = Object.values(ventasMap).sort((a, b) => ts(b.fecha) - ts(a.fecha));
+
+    return res.json({ cliente_id, equipos, ventas });
   } catch (error) {
-    console.error('Error en getHistorialCliente (SQL):', error);
-    return res
-      .status(500)
-      .json({ error: 'Error al obtener historial de los equipos del cliente' });
+    console.error("Error en getHistorialClienteByClienteId:", error);
+    return res.status(500).json({ error: "Error al obtener historial del cliente" });
   }
 };
+;
 
