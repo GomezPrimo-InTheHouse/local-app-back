@@ -408,15 +408,309 @@ export const deleteVenta = async (req, res) => {
 
 
 
+// export const updateVenta = async (req, res) => {
+//   const ventaId = Number(req.params.id);
+//   const { cliente_id, detalles = [], monto_abonado } = req.body || {};
+
+//   if (!Number.isInteger(ventaId)) {
+//     return res.status(400).json({ success: false, error: 'ID de venta inválido' });
+//   }
+
+//   const nextDetails = Array.isArray(detalles) ? detalles : [];
+
+//   const client = await pool.connect();
+//   try {
+//     // ====== INICIO TRANSACCIÓN ======
+//     await client.query('BEGIN');
+
+//     // 1) Verificar/bloquear cabecera
+//     const lockVenta = await client.query(
+//       `SELECT id FROM venta WHERE id = $1::int FOR UPDATE`,
+//       [ventaId]
+//     );
+//     if (lockVenta.rowCount === 0) {
+//       throw new Error(`La venta ${ventaId} no existe`);
+//     }
+
+//     // 2) Traer detalles actuales
+//     const curr = await client.query(
+//       `SELECT id, producto_id, cantidad, precio_unitario, subtotal
+//          FROM detalle_venta
+//         WHERE venta_id = $1::int
+//         ORDER BY id`,
+//       [ventaId]
+//     );
+//     const currentDetails = curr.rows;
+
+//     const currentById = new Map(currentDetails.map(d => [String(d.id), d]));
+//     const nextById = new Map(nextDetails.filter(d => d.id != null).map(d => [String(d.id), d]));
+
+//     // 3) Calcular diffs
+//     const toInsert = [];
+//     const toUpdate = [];
+//     const toDelete = [];
+
+//     // INSERTS: items sin id
+//     for (const d of nextDetails) {
+//       if (d.id == null) {
+//         if (!Number.isInteger(d.producto_id)) throw new Error('producto_id (int) requerido en item nuevo');
+//         const c = Number(d.cantidad);
+//         if (!Number.isFinite(c) || c <= 0) throw new Error('cantidad inválida en item nuevo');
+
+//         toInsert.push({
+//           producto_id: Number(d.producto_id),
+//           cantidad: c,
+//           precio_unitario: d.precio_unitario ?? null, // si es null, tomamos producto.precio
+//         });
+//       }
+//     }
+
+//     // UPDATES: items con id donde cambió algo
+//     for (const [detId, oldRow] of currentById.entries()) {
+//       if (nextById.has(detId)) {
+//         const newRow = nextById.get(detId);
+
+//         const oldCantidad = Number(oldRow.cantidad) || 0;
+//         const newCantidad = Number(newRow.cantidad) || 0;
+//         const qty_delta = newCantidad - oldCantidad;
+
+//         const oldProd = Number(oldRow.producto_id);
+//         const newProd = Number(newRow.producto_id ?? oldProd);
+
+//         const precio_unitario =
+//           newRow.precio_unitario != null ? Number(newRow.precio_unitario) : (oldRow.precio_unitario ?? null);
+
+//         const productChanged = newProd !== oldProd;
+//         const anyFieldChanged =
+//           productChanged || qty_delta !== 0 ||
+//           (precio_unitario ?? null) !== (oldRow.precio_unitario ?? null);
+
+//         if (anyFieldChanged) {
+//           toUpdate.push({
+//             id: Number(detId),
+//             old_producto_id: oldProd,
+//             new_producto_id: newProd,
+//             old_cantidad: oldCantidad,
+//             new_cantidad: newCantidad,
+//             qty_delta,
+//             precio_unitario,
+//           });
+//         }
+//       }
+//     }
+
+//     // DELETES: detalles que estaban y ya no
+//     for (const [detId, oldRow] of currentById.entries()) {
+//       if (!nextById.has(detId)) {
+//         toDelete.push({
+//           id: Number(detId),
+//           producto_id: Number(oldRow.producto_id),
+//           cantidad: Number(oldRow.cantidad) || 0,
+//         });
+//       }
+//     }
+
+//     // 4) Actualizar cabecera si vino algo
+//     if (cliente_id != null || monto_abonado != null) {
+//       await client.query(
+//         `UPDATE venta
+//             SET cliente_id    = COALESCE($2::int, cliente_id),
+//                 monto_abonado = COALESCE($3::numeric, monto_abonado)
+//           WHERE id = $1::int`,
+//         [ventaId, cliente_id, monto_abonado]
+//       );
+//     }
+
+//     // 5) Aplicar diffs (orden seguro)
+
+//     // 5.a) DELETES → devolver stock y borrar detalle
+//     for (const item of toDelete) {
+//       const { id: detId, producto_id, cantidad } = item;
+
+//       if (cantidad > 0) {
+//         await client.query(
+//           `UPDATE producto
+//               SET stock = stock + $2::int
+//             WHERE id = $1::int`,
+//           [producto_id, cantidad]
+//         );
+//       }
+
+//       await client.query(
+//         `DELETE FROM detalle_venta
+//           WHERE id = $1::int AND venta_id = $2::int`,
+//         [detId, ventaId]
+//       );
+//     }
+
+//     // 5.b) UPDATES → mover o ajustar delta y actualizar fila
+//     for (const u of toUpdate) {
+//       const {
+//         id: detId,
+//         old_producto_id,
+//         new_producto_id,
+//         old_cantidad,
+//         new_cantidad,
+//         qty_delta,
+//         precio_unitario,
+//       } = u;
+
+//       if (new_producto_id !== old_producto_id) {
+//         // Mover: devolver todo al viejo, descontar todo del nuevo (con validación)
+//         if (old_cantidad > 0) {
+//           await client.query(
+//             `UPDATE producto SET stock = stock + $2::int WHERE id = $1::int`,
+//             [old_producto_id, old_cantidad]
+//           );
+//         }
+
+//         if (new_cantidad > 0) {
+//           const updNew = await client.query(
+//             `UPDATE producto
+//                 SET stock = stock - $2::int
+//               WHERE id = $1::int
+//                 AND stock >= $2::int`,
+//             [new_producto_id, new_cantidad]
+//           );
+//           if (updNew.rowCount === 0) {
+//             throw new Error(`Stock insuficiente para producto ${new_producto_id} (requiere ${new_cantidad})`);
+//           }
+//         }
+//       } else if (qty_delta !== 0) {
+//         // Mismo producto: ajustar solo delta
+//         if (qty_delta > 0) {
+//           const upd = await client.query(
+//             `UPDATE producto
+//                 SET stock = stock - $2::int
+//               WHERE id = $1::int
+//                 AND stock >= $2::int`,
+//             [new_producto_id, qty_delta]
+//           );
+//           if (upd.rowCount === 0) {
+//             throw new Error(`Stock insuficiente para producto ${new_producto_id} (delta ${qty_delta})`);
+//           }
+//         } else {
+//           await client.query(
+//             `UPDATE producto
+//                 SET stock = stock + $2::int
+//               WHERE id = $1::int`,
+//             [new_producto_id, Math.abs(qty_delta)]
+//           );
+//         }
+//       }
+
+//       // Actualizar detalle (casteos explícitos para evitar 42P08)
+//       await client.query(
+//         `UPDATE detalle_venta
+//             SET producto_id     = $2::int,
+//                 cantidad        = $3::int,
+//                 precio_unitario = $4::numeric,
+//                 subtotal        = ($3::numeric * COALESCE($4::numeric, 0::numeric))
+//           WHERE id = $1::int
+//             AND venta_id = $5::int`,
+//         [detId, new_producto_id, new_cantidad, precio_unitario, ventaId]
+//       );
+//     }
+
+//     // 5.c) INSERTS → descontar stock y crear detalle
+//     for (const ins of toInsert) {
+//       const { producto_id, cantidad } = ins;
+
+//       // Descontar stock con validación
+//       const upd = await client.query(
+//         `UPDATE producto
+//             SET stock = stock - $2::int
+//           WHERE id = $1::int
+//             AND stock >= $2::int`,
+//         [producto_id, cantidad]
+//       );
+//       if (upd.rowCount === 0) {
+//         throw new Error(`Stock insuficiente para producto ${producto_id} (requiere ${cantidad})`);
+//       }
+
+//       // Tomar precio por defecto si no vino
+//       let precio_unit = ins.precio_unitario;
+//       if (precio_unit == null) {
+//         const pr = await client.query(`SELECT precio FROM producto WHERE id = $1::int`, [producto_id]);
+//         if (pr.rowCount === 0) throw new Error(`Producto ${producto_id} inexistente`);
+//         // producto.precio es DECIMAL -> usar como NUMERIC
+//         precio_unit = Number(pr.rows[0].precio) || 0;
+//       }
+
+//       await client.query(
+//         `INSERT INTO detalle_venta (venta_id, producto_id, cantidad, precio_unitario, subtotal)
+//          VALUES ($1::int, $2::int, $3::int, $4::numeric, ($3::numeric * COALESCE($4::numeric, 0::numeric)))`,
+//         [ventaId, producto_id, cantidad, precio_unit]
+//       );
+//     }
+
+//     // 6) Recalcular total y saldo (ambos NUMERIC)
+//     const recalc = await client.query(
+//       `WITH t AS (
+//          SELECT COALESCE(SUM(subtotal), 0::numeric) AS total
+//            FROM detalle_venta
+//           WHERE venta_id = $1::int
+//        )
+//        UPDATE venta v
+//           SET total = t.total,
+//               saldo = t.total - COALESCE(v.monto_abonado::numeric, 0::numeric)
+//          FROM t
+//         WHERE v.id = $1::int
+//         RETURNING v.id, v.cliente_id, v.monto_abonado, v.total, v.saldo`,
+//       [ventaId]
+//     );
+
+//     // Detalles finales para respuesta
+//     const detFinal = await client.query(
+//       `SELECT id, producto_id, cantidad, precio_unitario, subtotal
+//          FROM detalle_venta
+//         WHERE venta_id = $1::int
+//         ORDER BY id`,
+//       [ventaId]
+//     );
+
+//     // ====== COMMIT ======
+//     await client.query('COMMIT');
+
+//     return res.status(200).json({
+//       success: true,
+//       data: {
+//         venta: recalc.rows[0],
+//         detalles: detFinal.rows,
+//       },
+//     });
+//   } catch (err) {
+//     try { await client.query('ROLLBACK'); } catch {}
+//     console.error('Error en updateVenta (SQL):', err);
+//     return res.status(500).json({ success: false, error: err.message || 'Error al actualizar venta' });
+//   } finally {
+//     client.release();
+//   }
+// };
+
 export const updateVenta = async (req, res) => {
   const ventaId = Number(req.params.id);
-  const { cliente_id, detalles = [], monto_abonado } = req.body || {};
 
   if (!Number.isInteger(ventaId)) {
-    return res.status(400).json({ success: false, error: 'ID de venta inválido' });
+    return res.status(400).json({ success: false, error: "ID de venta inválido" });
   }
 
-  const nextDetails = Array.isArray(detalles) ? detalles : [];
+  // ✅ soporta payload plano y payload web { venta: {...}, detalles: [...] }
+  const body = req.body || {};
+  const ventaBody = body.venta && typeof body.venta === "object" ? body.venta : {};
+
+  const cliente_id =
+    body.cliente_id != null ? Number(body.cliente_id) :
+    ventaBody.cliente_id != null ? Number(ventaBody.cliente_id) :
+    null;
+
+  const monto_abonado =
+    body.monto_abonado != null ? body.monto_abonado :
+    ventaBody.monto_abonado != null ? ventaBody.monto_abonado :
+    null;
+
+  const detalles = Array.isArray(body.detalles) ? body.detalles : [];
+  const nextDetails = detalles;
 
   const client = await pool.connect();
   try {
