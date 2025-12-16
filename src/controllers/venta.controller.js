@@ -3,8 +3,7 @@
 import { supabase } from "../config/supabase.js";
 import { updateProducto } from "./producto/producto.controller.js";
 import { pool } from '../config/supabaseAuthModule.js'; //sirve para hacer queries SQL crudas si es necesario
-import { format } from 'date-fns';
-import { utcToZonedTime } from 'date-fns-tz';
+
 
 // ✅ Crear una nueva venta
 // export const createVenta = async (req, res) => {
@@ -256,27 +255,48 @@ export const createVenta = async (req, res) => {
 // };
 
 
+const formatVentaDate = (dateString) => {
+    try {
+        const fechaUTC = new Date(dateString);
+        if (isNaN(fechaUTC.getTime())) return dateString; 
+
+        // Configuración para el formato y la zona horaria
+        const formatter = new Intl.DateTimeFormat('es-AR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false, // Formato 24 horas
+            timeZone: 'America/Argentina/Buenos_Aires', // 🎯 Zona horaria deseada
+        });
+
+        const partes = formatter.formatToParts(fechaUTC);
+        
+        // Reconstrucción manual para asegurar el formato YYYY-MM-DD HH:MM:SS
+        const year = partes.find(p => p.type === 'year')?.value;
+        const month = partes.find(p => p.type === 'month')?.value;
+        const day = partes.find(p => p.type === 'day')?.value;
+        const hour = partes.find(p => p.type === 'hour')?.value;
+        const minute = partes.find(p => p.type === 'minute')?.value;
+        const second = partes.find(p => p.type === 'second')?.value;
+
+        // Devuelve la cadena formateada, asegurando que todas las partes existen
+        return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+    } catch (e) {
+        // En caso de error, devolvemos la cadena original
+        console.error("Error en formato de fecha con Intl:", e);
+        return dateString; 
+    }
+};
+
+
 /**
  * @description Obtiene una lista de ventas con detalles, ordenadas por saldo pendiente y fecha.
- * @param {object} req - Objeto de solicitud Express.
- * @param {object} res - Objeto de respuesta Express.
- * @returns {Promise<void>}
  */
 export const getVentas = async (req, res) => {
   const canalQuery = req.query.canal; 
-
-  // --- Lógica Auxiliar de Formato ---
-  const formatVentaDate = (dateString) => {
-      const zonaHorariaArgentina = 'America/Argentina/Buenos_Aires';
-      try {
-        const fechaUTC = new Date(dateString);
-        if (isNaN(fechaUTC)) return dateString; // Si no es fecha válida, devuelve original
-        const fechaArgentina = utcToZonedTime(fechaUTC, zonaHorariaArgentina);
-        return format(fechaArgentina, 'yyyy-MM-dd HH:mm:ss');
-      } catch (e) {
-        return dateString;
-      }
-  };
 
   // --- 1. Validación de Inputs ---
   const canalesValidos = ["local", "web_shop", "todos", undefined];
@@ -321,7 +341,6 @@ export const getVentas = async (req, res) => {
       )
     `;
 
-    // Seleccionamos dinámicamente el cupón si es necesario
     const selectStatement = includeCupon
       ? `${baseSelect}, cupon:cupon_id (id, codigo, descripcion, descuento_porcentaje, descuento_monto)`
       : baseSelect;
@@ -333,7 +352,6 @@ export const getVentas = async (req, res) => {
       .order("saldo", { ascending: false }) 
       .order("fecha", { ascending: false });
 
-    // Aplicar filtro de canal
     if (canal) {
       query = query.eq("canal", canal);
     }
@@ -361,7 +379,6 @@ export const getVentas = async (req, res) => {
         subtotal_items = detalles.reduce((acc, d) => {
           const cantidad = Number(d.cantidad) || 0;
           const precio_unitario = Number(d.precio_unitario) || 0;
-          // Usa el subtotal de la DB o recalcula
           const subtotal_d = Number(d.subtotal) || (cantidad * precio_unitario); 
           return acc + subtotal_d;
         }, 0);
@@ -371,11 +388,10 @@ export const getVentas = async (req, res) => {
       
       return {
         ...v,
-        // Formato de fecha a zona horaria Argentina
+        // ✅ Uso de la función sin dependencia externa
         fecha: formatVentaDate(v.fecha), 
         subtotal_items: subtotal_items, 
         descuento_real: descuento_real, 
-        // Aseguramos el cupon solo si es web_shop
         cupon: v.canal === "web_shop" ? (v.cupon ?? null) : null,
       };
     });
@@ -391,7 +407,6 @@ export const getVentas = async (req, res) => {
       .json({ success: false, error: "Error interno del servidor al procesar la solicitud" });
   }
 };
-
 
 
 
