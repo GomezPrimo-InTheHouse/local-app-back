@@ -3,7 +3,8 @@
 import { supabase } from "../config/supabase.js";
 import { updateProducto } from "./producto/producto.controller.js";
 import { pool } from '../config/supabaseAuthModule.js'; //sirve para hacer queries SQL crudas si es necesario
-
+import { format } from 'date-fns';
+import { utcToZonedTime } from 'date-fns-tz';
 
 // ✅ Crear una nueva venta
 // export const createVenta = async (req, res) => {
@@ -254,9 +255,8 @@ export const createVenta = async (req, res) => {
 // };
 
 
-import { supabase } from '../config/supabaseClient'; // Asumiendo esta importación
-import { format } from 'date-fns';
-import { utcToZonedTime } from 'date-fns-tz';
+
+
 
 /**
  * @description Obtiene una lista de ventas con detalles, ordenadas por saldo pendiente y fecha.
