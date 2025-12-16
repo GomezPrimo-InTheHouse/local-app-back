@@ -255,11 +255,6 @@ export const createVenta = async (req, res) => {
 //   }
 // };
 
-import { supabase } from "../config/supabase.js";
-// import { updateProducto } from "./producto/producto.controller.js"; // No usado aquí
-// import { pool } from '../config/supabaseAuthModule.js'; // No usado aquí
-import { format } from 'date-fns';
-import { utcToZonedTime } from 'date-fns-tz';
 
 /**
  * @description Obtiene una lista de ventas con detalles, ordenadas por saldo pendiente y fecha.
