@@ -428,7 +428,7 @@ export const getEquipos = async (req, res) => {
         fecha_ingreso,
         estado_id,
         cliente_id,
-        cliente:cliente_id ( nombre, apellido )
+        cliente:cliente_id ( nombre, apellido, celular )
       `)
       //solo los equipos que no tengan estado_id = 18 (dado de baja)
       .neq('estado_id', 18)
@@ -455,7 +455,8 @@ export const getEquipos = async (req, res) => {
         estado_id: item.estado_id,
         cliente_id: item.cliente_id,
         cliente_nombre: clienteRec?.nombre ?? null,
-        cliente_apellido: clienteRec?.apellido ?? null
+        cliente_apellido: clienteRec?.apellido ?? null,
+        cliente_celular: clienteRec?.celular ?? null,
       };
     });
 
