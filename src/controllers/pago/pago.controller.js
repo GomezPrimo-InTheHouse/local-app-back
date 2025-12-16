@@ -3,23 +3,32 @@
 import { supabase } from '../../config/supabase.js';
 
 // POST: /api/pagos/abono
-export const registrarAbono = async (req, res) => {
-    const { presupuesto_id, monto, metodo_pago, observaciones } = req.body;
 
-    if (!presupuesto_id || !monto || !metodo_pago) {
-        return res.status(400).json({ error: 'Faltan campos obligatorios: presupuesto_id, monto, metodo_pago.' });
+/**
+ * Registra un abono/pago vinculado directamente a un Ingreso (Orden de Servicio).
+ * Anteriormente vinculado a presupuesto_id.
+ */
+export const registrarAbono = async (req, res) => {
+    // 1. CAMBIO: Esperamos ingreso_id en lugar de presupuesto_id
+    const { ingreso_id, monto, metodo_pago, observaciones } = req.body;
+
+    // 2. VALIDACIÓN: Revisar el nuevo campo
+    if (!ingreso_id || !monto || !metodo_pago) {
+        return res.status(400).json({ error: 'Faltan campos obligatorios: ingreso_id, monto, metodo_pago.' });
     }
 
     try {
         const { data, error } = await supabase
             .from('pago_abono')
             .insert({
-                presupuesto_id: presupuesto_id,
+                // 3. INSERCIÓN: Usamos ingreso_id
+                ingreso_id: ingreso_id, 
                 monto: monto,
                 metodo_pago: metodo_pago,
                 observaciones: observaciones
             })
-            .select('id, presupuesto_id, monto, fecha_pago, metodo_pago') // Devolver solo campos relevantes
+            // 4. SELECCIÓN: Devolver el nuevo ID de vinculación
+            .select('id, ingreso_id, monto, fecha_pago, metodo_pago') 
             .single();
 
         if (error) {
