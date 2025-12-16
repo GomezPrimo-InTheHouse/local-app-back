@@ -153,135 +153,12 @@ export const createVenta = async (req, res) => {
 //nuevo getVentas con filtro por canal de venta
 // controllers/ventaController.js (o donde lo tengas definido)
 
-// export const getVentas = async (req, res) => {
-//   try {
-//     const { canal } = req.query; // "local", "web_shop" o "todos" (opcional)
-
-//     // ✅ Solo traemos cupón si el resultado puede traer ventas web
-//     const includeCupon = !canal || canal === "web_shop" || canal === "todos";
-
-//     const baseSelect = `
-//       id,
-//       fecha,
-//       total,
-//       monto_abonado,
-//       saldo,
-//       canal,
-//       cliente:cliente_id (
-//         id,
-//         nombre,
-//         apellido,
-//         dni,
-//         email
-//       ),
-//       detalle_venta (
-//         id,
-//         producto_id,
-//         cantidad,
-//         precio_unitario,
-//         subtotal,
-//         producto:producto_id (
-//           id,
-//           nombre,
-//           costo
-//         )
-//       )
-//     `;
-
-//     const selectWithOptionalCupon = includeCupon
-//       ? `${baseSelect},
-//          cupon:cupon_id (
-//            id,
-//            codigo,
-//            descripcion,
-//            descuento_porcentaje,
-//            descuento_monto
-//          )`
-//       : baseSelect;
-
-//     let query = supabase
-//       .from("venta")
-//       .select(selectWithOptionalCupon)
-//       .in("estado_id", [19, 26])
-//       .order("fecha", { ascending: false });
-
-//     if (canal && canal !== "todos") {
-//       query = query.eq("canal", canal);
-//     }
-
-//     const { data, error } = await query;
-
-//     if (error) {
-//       console.error("Supabase error getVentas:", error);
-//       return res
-//         .status(500)
-//         .json({ success: false, error: "Error Supabase al obtener ventas" });
-//     }
-
-//     // ✅ Calcular descuento real SOLO para web_shop
-//     const enriched = (data || []).map((v) => {
-//       const detalles = Array.isArray(v.detalle_venta) ? v.detalle_venta : [];
-//       const total = Number(v.total) || 0;
-
-//       let subtotal_items = 0;
-//       let descuento_real = 0;
-
-//       if (v.canal === "web_shop") {
-//         subtotal_items = detalles.reduce((acc, d) => {
-//           const st =
-//             Number(d.subtotal) ||
-//             (Number(d.cantidad) || 0) * (Number(d.precio_unitario) || 0);
-//           return acc + st;
-//         }, 0);
-
-//         descuento_real = Math.max(0, subtotal_items - total);
-//       }
-
-//       return {
-//         ...v,
-//         subtotal_items,
-//         descuento_real,
-//         cupon: v.canal === "web_shop" ? (v.cupon ?? null) : null,
-//       };
-//     });
-
-//     return res.status(200).json({ success: true, data: enriched });
-//   } catch (error) {
-//     console.error("Error en getVentas:", error?.message || error);
-//     return res
-//       .status(500)
-//       .json({ success: false, error: "Error al obtener ventas" });
-//   }
-// };
-
-
-
-
-
-/**
- * @description Obtiene una lista de ventas con detalles, ordenadas por saldo pendiente y fecha.
- * @param {object} req - Objeto de solicitud Express.
- * @param {object} res - Objeto de respuesta Express.
- * @returns {Promise<void>}
- */
 export const getVentas = async (req, res) => {
-  const canalQuery = req.query.canal; // "local", "web_shop" o "todos" (opcional)
-
-  // 1. ✅ Validar Inputs
-  const canalesValidos = ["local", "web_shop", "todos", undefined];
-  if (canalQuery && !canalesValidos.includes(canalQuery)) {
-    return res.status(400).json({
-      success: false,
-      error: `Valor de 'canal' inválido. Debe ser 'local', 'web_shop' o 'todos'.`,
-    });
-  }
-  
-  // Usamos el valor validado o undefined
-  const canal = canalQuery === 'todos' ? undefined : canalQuery; 
-  
   try {
+    const { canal } = req.query; // "local", "web_shop" o "todos" (opcional)
+
     // ✅ Solo traemos cupón si el resultado puede traer ventas web
-    const includeCupon = !canal || canal === "web_shop";
+    const includeCupon = !canal || canal === "web_shop" || canal === "todos";
 
     const baseSelect = `
       id,
@@ -324,16 +201,12 @@ export const getVentas = async (req, res) => {
 
     let query = supabase
       .from("venta")
-      // Seleccionamos las columnas y relaciones necesarias
       .select(selectWithOptionalCupon)
-      // Estado 19: Completada (ej. saldada), Estado 26: Pendiente de Pago
       .in("estado_id", [19, 26])
-      // 2. ✅ Ordenamiento: Primero por saldo > 0 (desc) y luego por fecha (desc)
-      .order("saldo", { ascending: false }) 
-      .order("fecha", { ascending: false });
+      .order("saldo", { ascending: false })
+     .order("fecha", { ascending: false });
 
-    // Aplicar filtro de canal si no es "todos" o no está definido
-    if (canal) {
+    if (canal && canal !== "todos") {
       query = query.eq("canal", canal);
     }
 
@@ -341,13 +214,12 @@ export const getVentas = async (req, res) => {
 
     if (error) {
       console.error("Supabase error getVentas:", error);
-      // Retorno 500 para errores internos de la DB/API
       return res
         .status(500)
-        .json({ success: false, error: "Error de infraestructura al obtener ventas" });
+        .json({ success: false, error: "Error Supabase al obtener ventas" });
     }
 
-    // ✅ Post-procesamiento para cálculos, formato de fecha y manejo de nulos/NaN
+    // ✅ Calcular descuento real SOLO para web_shop
     const enriched = (data || []).map((v) => {
       const detalles = Array.isArray(v.detalle_venta) ? v.detalle_venta : [];
       const total = Number(v.total) || 0;
@@ -355,47 +227,39 @@ export const getVentas = async (req, res) => {
       let subtotal_items = 0;
       let descuento_real = 0;
 
-      // Cálculo de descuento real SOLO para web_shop
       if (v.canal === "web_shop") {
         subtotal_items = detalles.reduce((acc, d) => {
-          // Aseguramos que los valores sean numéricos para evitar NaN
-          const cantidad = Number(d.cantidad) || 0;
-          const precio_unitario = Number(d.precio_unitario) || 0;
-          const subtotal_d = Number(d.subtotal) || (cantidad * precio_unitario);
-          return acc + subtotal_d;
+          const st =
+            Number(d.subtotal) ||
+            (Number(d.cantidad) || 0) * (Number(d.precio_unitario) || 0);
+          return acc + st;
         }, 0);
 
         descuento_real = Math.max(0, subtotal_items - total);
       }
-      
-      // 3. ✅ Formato de fecha a Buenos Aires (GMT-03) 24hr
-      // Asumiendo que 'fecha' es una cadena ISO 8601 (UTC) devuelta por Postgres/Supabase
-      const zonaHorariaArgentina = 'America/Argentina/Buenos_Aires';
-      const fechaUTC = new Date(v.fecha);
-      const fechaArgentina = utcToZonedTime(fechaUTC, zonaHorariaArgentina);
-      const fechaFormato24h = format(fechaArgentina, 'yyyy-MM-dd HH:mm:ss');
-      
+
       return {
         ...v,
-        // Reemplazamos la fecha original por la formateada
-        fecha: fechaFormato24h, 
-        subtotal_items: subtotal_items, // Ya es numérico
-        descuento_real: descuento_real, // Ya es numérico
-        // Aseguramos que el cupón solo se devuelva para web_shop, cumpliendo con la lógica original
+        subtotal_items,
+        descuento_real,
         cupon: v.canal === "web_shop" ? (v.cupon ?? null) : null,
       };
     });
 
-    // Retorno 200 OK
     return res.status(200).json({ success: true, data: enriched });
   } catch (error) {
-    // 4. ✅ Logging claro en errores críticos y retorno 500 genérico
-    console.error("Error crítico en getVentas:", error?.message || error);
+    console.error("Error en getVentas:", error?.message || error);
     return res
       .status(500)
-      .json({ success: false, error: "Error interno del servidor al procesar la solicitud" });
+      .json({ success: false, error: "Error al obtener ventas" });
   }
 };
+
+
+
+
+
+
 
 
 // ✅ Obtener una venta por ID
