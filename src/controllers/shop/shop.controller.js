@@ -269,17 +269,18 @@ export const obtenerCuponesCliente = async (req, res) => {
 // =========================================================
 export const loginCliente = async (req, res) => {
     try {
-        const { nombre, apellido, dni, email } = req.body;
+        const { nombre, apellido, dni, celular, email } = req.body;
 
-        if (!nombre || !apellido || !dni) {
+        if (!nombre || !apellido || !dni || !celular) {
             return res.status(400).json({
-                error: "nombre, apellido y dni son requeridos",
+                error: "nombre, apellido, celular y dni son requeridos",
             });
         }
 
         const dniNorm = String(dni).trim();
         const nombreNorm = String(nombre).trim();
         const apellidoNorm = String(apellido).trim();
+        const celularNorm = celular ? String(celular).trim() : null;
         const emailNorm = email ? String(email).trim() : null;
 
         // 1) Buscar cliente SOLO por DNI (clave única)
@@ -303,6 +304,7 @@ export const loginCliente = async (req, res) => {
                         apellido: apellidoNorm,
                         dni: dniNorm,
                         email: emailNorm,
+                        celular: celularNorm,
                         canal_alta: "web_shop", // requiere columna
                     },
                 ])
@@ -359,8 +361,8 @@ export const loginCliente = async (req, res) => {
             message: "Identificación exitosa",
             cliente: clienteFinal, // SIEMPRE con id
             canal_cliente: canalAlta,
-
             cupon_activo: cuponResult.cupon || null,
+            
 
             // Flags (si el helper no trae blocked, lo dejamos en false)
             cupon_creado: !!cuponResult.created,
