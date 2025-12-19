@@ -41,7 +41,7 @@ export const getFavoritosByClienteId = async (req, res) => {
 
       return {
         ...row,
-        producto: { ...p, precio, oferta, precio_final },
+        producto: { ...p, precio, oferta, precio_final, imagen_url: p.imagen_url || null},
       };
     });
 
