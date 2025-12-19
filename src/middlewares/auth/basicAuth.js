@@ -122,19 +122,19 @@
 
 import { pool } from '../../config/supabaseAuthModule.js';
 import bcrypt from 'bcrypt';
-import { registrarHistorial } from '../../utils/historial/registrarHistorial.js';
+// import { registrarHistorial } from '../../utils/historial/registrarHistorial.js';
 
 export const basicAuth = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const { totp } = req.body; // capturamos el TOTP del body
 
   if (!authHeader || !authHeader.startsWith('Basic ')) {
-    await registrarHistorial({
-      username: 'no proporcionado',
-      accion: 'login',
-      estado: 'error',
-      mensaje: 'Cabecera Authorization básica requerida',
-    });
+    // await registrarHistorial({
+    //   username: 'no proporcionado',
+    //   accion: 'login',
+    //   estado: 'error',
+    //   mensaje: 'Cabecera Authorization básica requerida',
+    // });
     return res.status(401).json({ error: 'Cabecera Authorization básica requerida' });
   }
 
@@ -143,12 +143,12 @@ export const basicAuth = async (req, res, next) => {
   const [email, password] = credentials.split(':');
 
   if (!email || !password) {
-    await registrarHistorial({
-      username: email || 'no proporcionado',
-      accion: 'login',
-      estado: 'error',
-      mensaje: 'Faltan credenciales',
-    });
+    // await registrarHistorial({
+    //   username: email || 'no proporcionado',
+    //   accion: 'login',
+    //   estado: 'error',
+    //   mensaje: 'Faltan credenciales',
+    // });
     return res.status(400).json({ error: 'Email y/o contraseña son requeridos' });
   }
 
@@ -156,12 +156,12 @@ export const basicAuth = async (req, res, next) => {
     const result = await pool.query('SELECT * FROM usuario WHERE email = $1', [email]);
 
     if (result.rows.length === 0) {
-      await registrarHistorial({
-        username: email,
-        accion: 'login',
-        estado: 'error',
-        mensaje: 'Usuario no encontrado',
-      });
+      // await registrarHistorial({
+      //   username: email,
+      //   accion: 'login',
+      //   estado: 'error',
+      //   mensaje: 'Usuario no encontrado',
+      // });
       return res.status(401).json({ error: 'Usuario no encontrado' });
     }
 
@@ -169,23 +169,23 @@ export const basicAuth = async (req, res, next) => {
     const match = await bcrypt.compare(password, usuario.password_hash);
 
     if (!match) {
-      await registrarHistorial({
-        username: email,
-        accion: 'login',
-        estado: 'error',
-        mensaje: 'Contraseña incorrecta',
-      });
+      // await registrarHistorial({
+      //   username: email,
+      //   accion: 'login',
+      //   estado: 'error',
+      //   mensaje: 'Contraseña incorrecta',
+      // });
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
     // Verificar que el TOTP fue proporcionado
     if (!totp) {
-      await registrarHistorial({
-        username: email,
-        accion: 'login',
-        estado: 'error',
-        mensaje: 'TOTP no proporcionado',
-      });
+      // await registrarHistorial({
+      //   username: email,
+      //   accion: 'login',
+      //   estado: 'error',
+      //   mensaje: 'TOTP no proporcionado',
+      // });
       return res.status(400).json({ error: 'Código TOTP requerido' });
     }
 
@@ -197,12 +197,12 @@ export const basicAuth = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Error en basicAuth:', error);
-    await registrarHistorial({
-      username: email || 'no definido',
-      accion: 'login',
-      estado: 'error',
-      mensaje: 'Error desde basic auth',
-    });
+    // await registrarHistorial({
+    //   username: email || 'no definido',
+    //   accion: 'login',
+    //   estado: 'error',
+    //   mensaje: 'Error desde basic auth',
+    // });
     res.status(500).json({ error: 'Error en autenticación básica' });
   }
 };
