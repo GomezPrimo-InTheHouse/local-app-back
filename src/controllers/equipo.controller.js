@@ -163,10 +163,10 @@ export const createEquipo = async (req, res) => {
     };
 
     try {
-      const twilioResponse = await axios.post(
-        "http://localhost:7002/twilio/enviar-mensaje",
-        payloadMs
-      );
+      // const twilioResponse = await axios.post(
+      //   "http://localhost:7002/twilio/enviar-mensaje",
+      //   payloadMs
+      // );
 
       return res.status(201).json({
         success: true,

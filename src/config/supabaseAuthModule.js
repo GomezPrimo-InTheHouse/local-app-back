@@ -12,9 +12,12 @@ export const pool = new Pool({
     rejectUnauthorized: false,   // 🔥 ignora CA no firmada
   },
   // Estas 3 líneas sirven para mejorar la estabilidad en Render:
-  max: 10, 
+  max: 5, 
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 10000,
+  // IMPORTANTE: Esto ayuda a mantener la conexión viva en Render
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000
 });
 
 pool.on('connect', () => {
