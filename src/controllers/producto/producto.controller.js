@@ -1102,6 +1102,9 @@ export const buscarProductos = async (req, res) => {
  * (ej: 'repuesto-taller-celular', 'repuesto-taller-notebook', 'repuesto-taller-pc')
  */
 // ✅ Obtener productos de tipo "repuesto-..." (opcionalmente filtrados por tipo_equipo)
+
+
+
 export const getRepuestosProducto = async (req, res) => {
   try {
     const { tipo_equipo } = req.query; // ej: 'celular', 'notebook', 'pc'
@@ -1137,6 +1140,9 @@ export const getRepuestosProducto = async (req, res) => {
     const categoriaIds = categorias.map((c) => c.id);
 
     // 2) Buscar productos que pertenezcan a esas categorías
+   
+   
+   
     const { data, error } = await supabase
       .from("producto")
       .select(

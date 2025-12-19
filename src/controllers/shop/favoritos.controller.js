@@ -16,6 +16,7 @@ export const getFavoritosByClienteId = async (req, res) => {
           id,
           nombre,
           precio,
+          imagen_url,
           oferta,
           stock,
           descripcion_web,
