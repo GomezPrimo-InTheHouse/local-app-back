@@ -1068,6 +1068,185 @@ export const testResend = async (req, res) => {
 //   codigo_cupon
 // }
 // =========================================================
+// export const getVentaShopById = async (req, res) => {
+//   try {
+//     const ventaId = Number(req.params.id);
+
+//     if (!Number.isFinite(ventaId) || ventaId <= 0) {
+//       return res.status(400).json({ error: "id de venta inválido" });
+//     }
+
+//     // 1) Traer venta + estado + cliente + cupón (por cupon_id)
+//     const { data: ventaRow, error: ventaErr } = await supabase
+//       .from("venta")
+//       .select(
+//         `
+//         id,
+//         fecha,
+//         canal,
+//         total,
+//         cliente_id,
+//         monto_abonado,
+//         saldo,
+//         cupon_id,
+
+//         estado:estado_id (
+//           id,
+//           nombre,
+//           ambito
+//         ),
+
+//         cliente:cliente_id (
+//           id,
+//           nombre,
+//           apellido,
+//           dni,
+//           email,
+//           direccion,
+//           celular,
+//           celular_contacto,
+//           canal_alta
+//         ),
+
+//         cupon:cupon_id (
+//           id,
+//           codigo,
+//           descripcion,
+//           descuento_porcentaje,
+//           descuento_monto,
+//           valido_desde,
+//           valido_hasta,
+//           uso_maximo,
+//           usos_realizados,
+//           estado:estado_id (
+//             id,
+//             nombre,
+//             ambito
+//           )
+//         )
+//       `
+//       )
+//       .eq("id", ventaId)
+//       .maybeSingle();
+
+//     if (ventaErr) throw ventaErr;
+
+//     if (!ventaRow) {
+//       return res.status(404).json({ error: "Venta no encontrada" });
+//     }
+
+//     // 2) Traer detalles + nombre de producto
+//     const { data: detallesRows, error: detErr } = await supabase
+//       .from("detalle_venta")
+//       .select(
+//         `
+//         id,
+//         venta_id,
+//         producto_id,
+//         cantidad,
+//         precio_unitario,
+//         subtotal,
+//         producto:producto_id (
+//           id,
+//           nombre
+//         )
+//       `
+//       )
+//       .eq("venta_id", ventaId)
+//       .order("id", { ascending: true });
+
+//     if (detErr) throw detErr;
+
+//     const detalles = (detallesRows || []).map((d) => {
+//       const prod = Array.isArray(d.producto) ? d.producto[0] : d.producto;
+//       return {
+//         producto_id: d.producto_id,
+//         producto_nombre: prod?.nombre ?? null,
+//         cantidad: d.cantidad,
+//         precio_unitario: Number(d.precio_unitario ?? 0),
+//         subtotal: Number(d.subtotal ?? 0),
+//       };
+//     });
+
+//     // 3) Totales
+//     const total_bruto = detalles.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
+//     const total_final = Number(ventaRow.total ?? 0);
+//     const descuento = Math.max(0, total_bruto - total_final);
+
+//     // 4) Respuesta final
+//     return res.status(200).json({
+//   venta: {
+//     id: ventaRow.id,
+//     fecha: ventaRow.fecha,
+//     canal: ventaRow.canal,
+
+//     // importes (venta)
+//     total_final,
+//     monto_abonado: Number(ventaRow.monto_abonado ?? 0),
+//     saldo: Number(ventaRow.saldo ?? 0),
+
+//     // ✅ DUPLICADOS PARA FRONT ULTRA-FRIENDLY
+//     total_bruto,
+//     descuento,
+//     total_final,
+
+//     // estado
+//     estado_id: ventaRow.estado?.id ?? null,
+//     estado_nombre: ventaRow.estado?.nombre ?? null,
+
+//     // cliente embebido
+//     cliente: ventaRow.cliente
+//       ? {
+//           id: ventaRow.cliente.id,
+//           nombre: ventaRow.cliente.nombre ?? null,
+//           apellido: ventaRow.cliente.apellido ?? null,
+//           dni: ventaRow.cliente.dni ?? null,
+//           email: ventaRow.cliente.email ?? null,
+//           direccion: ventaRow.cliente.direccion ?? null,
+//           celular: ventaRow.cliente.celular ?? null,
+//           celular_contacto: ventaRow.cliente.celular_contacto ?? null,
+//           canal_alta: ventaRow.cliente.canal_alta ?? null,
+//         }
+//       : null,
+
+//     // cupón embebido (si existe)
+//     cupon: ventaRow.cupon
+//       ? {
+//           id: ventaRow.cupon.id,
+//           codigo: ventaRow.cupon.codigo ?? null,
+//           descripcion: ventaRow.cupon.descripcion ?? null,
+//           descuento_porcentaje: ventaRow.cupon.descuento_porcentaje ?? null,
+//           descuento_monto: ventaRow.cupon.descuento_monto ?? null,
+//           valido_desde: ventaRow.cupon.valido_desde ?? null,
+//           valido_hasta: ventaRow.cupon.valido_hasta ?? null,
+//           uso_maximo: ventaRow.cupon.uso_maximo ?? null,
+//           usos_realizados: ventaRow.cupon.usos_realizados ?? null,
+//           estado_id: ventaRow.cupon.estado?.id ?? null,
+//           estado_nombre: ventaRow.cupon.estado?.nombre ?? null,
+//         }
+//       : null,
+//   },
+
+//   detalles,
+
+//   // Se mantienen también arriba por compatibilidad/claridad
+//   total_bruto,
+//   descuento,
+//   total_final,
+
+//   codigo_cupon: ventaRow.cupon?.codigo ?? null,
+// });
+
+//   } catch (err) {
+//     console.error("Error en getVentaShopById:", err);
+//     return res.status(500).json({
+//       error: "Error interno al obtener venta",
+//       detail: err.message,
+//     });
+//   }
+// };
+
+
 export const getVentaShopById = async (req, res) => {
   try {
     const ventaId = Number(req.params.id);
@@ -1076,70 +1255,29 @@ export const getVentaShopById = async (req, res) => {
       return res.status(400).json({ error: "id de venta inválido" });
     }
 
-    // 1) Traer venta + estado + cliente + cupón (por cupon_id)
+    // 1) Traer venta + estado + cliente + cupón
     const { data: ventaRow, error: ventaErr } = await supabase
       .from("venta")
-      .select(
-        `
-        id,
-        fecha,
-        canal,
-        total,
-        cliente_id,
-        monto_abonado,
-        saldo,
-        cupon_id,
-
-        estado:estado_id (
-          id,
-          nombre,
-          ambito
-        ),
-
-        cliente:cliente_id (
-          id,
-          nombre,
-          apellido,
-          dni,
-          email,
-          direccion,
-          celular,
-          celular_contacto,
-          canal_alta
-        ),
-
+      .select(`
+        id, fecha, canal, total, cliente_id, monto_abonado, saldo, cupon_id,
+        estado:estado_id (id, nombre, ambito),
+        cliente:cliente_id (id, nombre, apellido, dni, email, direccion, celular, celular_contacto, canal_alta),
         cupon:cupon_id (
-          id,
-          codigo,
-          descripcion,
-          descuento_porcentaje,
-          descuento_monto,
-          valido_desde,
-          valido_hasta,
-          uso_maximo,
-          usos_realizados,
-          estado:estado_id (
-            id,
-            nombre,
-            ambito
-          )
+          id, codigo, descripcion, descuento_porcentaje, descuento_monto,
+          valido_desde, valido_hasta, uso_maximo, usos_realizados,
+          estado:estado_id (id, nombre, ambito)
         )
-      `
-      )
+      `)
       .eq("id", ventaId)
       .maybeSingle();
 
     if (ventaErr) throw ventaErr;
+    if (!ventaRow) return res.status(404).json({ error: "Venta no encontrada" });
 
-    if (!ventaRow) {
-      return res.status(404).json({ error: "Venta no encontrada" });
-    }
-
-    // 2) Traer detalles + nombre de producto
+    // 2) Traer detalles + nombre e IMAGEN del producto
     const { data: detallesRows, error: detErr } = await supabase
       .from("detalle_venta")
-      .select(
-        `
+      .select(`
         id,
         venta_id,
         producto_id,
@@ -1148,20 +1286,22 @@ export const getVentaShopById = async (req, res) => {
         subtotal,
         producto:producto_id (
           id,
-          nombre
+          nombre,
+          imagen_url  // 👈 AGREGADO: Asegúrate que en tu DB se llame así
         )
-      `
-      )
+      `)
       .eq("venta_id", ventaId)
       .order("id", { ascending: true });
 
     if (detErr) throw detErr;
 
+    // Normalización de los detalles para el frontend
     const detalles = (detallesRows || []).map((d) => {
       const prod = Array.isArray(d.producto) ? d.producto[0] : d.producto;
       return {
         producto_id: d.producto_id,
         producto_nombre: prod?.nombre ?? null,
+        imagen_url: prod?.imagen_url ?? null, // 👈 AGREGADO: Ahora el front recibe la URL
         cantidad: d.cantidad,
         precio_unitario: Number(d.precio_unitario ?? 0),
         subtotal: Number(d.subtotal ?? 0),
@@ -1175,67 +1315,26 @@ export const getVentaShopById = async (req, res) => {
 
     // 4) Respuesta final
     return res.status(200).json({
-  venta: {
-    id: ventaRow.id,
-    fecha: ventaRow.fecha,
-    canal: ventaRow.canal,
-
-    // importes (venta)
-    total_final,
-    monto_abonado: Number(ventaRow.monto_abonado ?? 0),
-    saldo: Number(ventaRow.saldo ?? 0),
-
-    // ✅ DUPLICADOS PARA FRONT ULTRA-FRIENDLY
-    total_bruto,
-    descuento,
-    total_final,
-
-    // estado
-    estado_id: ventaRow.estado?.id ?? null,
-    estado_nombre: ventaRow.estado?.nombre ?? null,
-
-    // cliente embebido
-    cliente: ventaRow.cliente
-      ? {
-          id: ventaRow.cliente.id,
-          nombre: ventaRow.cliente.nombre ?? null,
-          apellido: ventaRow.cliente.apellido ?? null,
-          dni: ventaRow.cliente.dni ?? null,
-          email: ventaRow.cliente.email ?? null,
-          direccion: ventaRow.cliente.direccion ?? null,
-          celular: ventaRow.cliente.celular ?? null,
-          celular_contacto: ventaRow.cliente.celular_contacto ?? null,
-          canal_alta: ventaRow.cliente.canal_alta ?? null,
-        }
-      : null,
-
-    // cupón embebido (si existe)
-    cupon: ventaRow.cupon
-      ? {
-          id: ventaRow.cupon.id,
-          codigo: ventaRow.cupon.codigo ?? null,
-          descripcion: ventaRow.cupon.descripcion ?? null,
-          descuento_porcentaje: ventaRow.cupon.descuento_porcentaje ?? null,
-          descuento_monto: ventaRow.cupon.descuento_monto ?? null,
-          valido_desde: ventaRow.cupon.valido_desde ?? null,
-          valido_hasta: ventaRow.cupon.valido_hasta ?? null,
-          uso_maximo: ventaRow.cupon.uso_maximo ?? null,
-          usos_realizados: ventaRow.cupon.usos_realizados ?? null,
-          estado_id: ventaRow.cupon.estado?.id ?? null,
-          estado_nombre: ventaRow.cupon.estado?.nombre ?? null,
-        }
-      : null,
-  },
-
-  detalles,
-
-  // Se mantienen también arriba por compatibilidad/claridad
-  total_bruto,
-  descuento,
-  total_final,
-
-  codigo_cupon: ventaRow.cupon?.codigo ?? null,
-});
+      venta: {
+        id: ventaRow.id,
+        fecha: ventaRow.fecha,
+        canal: ventaRow.canal,
+        total_final,
+        monto_abonado: Number(ventaRow.monto_abonado ?? 0),
+        saldo: Number(ventaRow.saldo ?? 0),
+        total_bruto,
+        descuento,
+        estado_id: ventaRow.estado?.id ?? null,
+        estado_nombre: ventaRow.estado?.nombre ?? null,
+        cliente: ventaRow.cliente || null,
+        cupon: ventaRow.cupon || null,
+      },
+      detalles, // 👈 Aquí los productos ya incluyen su imagen_url
+      total_bruto,
+      descuento,
+      total_final,
+      codigo_cupon: ventaRow.cupon?.codigo ?? null,
+    });
 
   } catch (err) {
     console.error("Error en getVentaShopById:", err);
