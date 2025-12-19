@@ -31,19 +31,19 @@ const allowedOrigins = [
   "http://localhost:7000"
 ];
 
-function isHostAllowed(origin) {
-  if (!origin) return true; // permitir curl/healthchecks sin Origin
-  try {
-    const { host } = new URL(origin); // ej. "local-app-front.vercel.app"
-    if (allowedHosts.has(host)) return true;
-    // permite cualquier *.vercel.app
-    if (host.endsWith(".vercel.app")) return true;
-    return false;
-  } catch {
-    // si el header Origin viene raro, mejor negar
-    return false;
-  }
-}
+// function isHostAllowed(origin) {
+//   if (!origin) return true; // permitir curl/healthchecks sin Origin
+//   try {
+//     const { host } = new URL(origin); // ej. "local-app-front.vercel.app"
+//     if (allowedHosts.has(host)) return true;
+//     // permite cualquier *.vercel.app
+//     if (host.endsWith(".vercel.app")) return true;
+//     return false;
+//   } catch {
+//     // si el header Origin viene raro, mejor negar
+//     return false;
+//   }
+// }
 
 // === CORS HARD MODE (PRIMERO) ===
 app.use((req, res, next) => {

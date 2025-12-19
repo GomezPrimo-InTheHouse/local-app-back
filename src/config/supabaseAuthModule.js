@@ -11,6 +11,10 @@ export const pool = new Pool({
     require: true,               // 🔥 fuerza TLS en Render
     rejectUnauthorized: false,   // 🔥 ignora CA no firmada
   },
+  // Estas 3 líneas sirven para mejorar la estabilidad en Render:
+  max: 10, 
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
 
 pool.on('connect', () => {
