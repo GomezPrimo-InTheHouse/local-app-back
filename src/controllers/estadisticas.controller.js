@@ -756,18 +756,12 @@ export const getReparacionesComunes = async (req, res) => {
 
 
 
-function getMonthRangeUTC(anio, mes1a12) {
-  const m = mes1a12 - 1; // Date.UTC usa 0-11
-  const start = new Date(Date.UTC(anio, m, 1, 0, 0, 0, 0));
-  const end = new Date(Date.UTC(anio, m + 1, 1, 0, 0, 0, 0));
-  return { startISO: start.toISOString(), endISO: end.toISOString() };
-}
-
+// GET /api/estadisticas/mes?mes=12&anio=2025
 export const getEstadisticasPorMes = async (req, res) => {
   try {
-    const fechaActual = new Date();
-    const nMes = req.query.mes ? Number(req.query.mes) : (fechaActual.getMonth() + 1);
-    const nAnio = req.query.anio ? Number(req.query.anio) : fechaActual.getFullYear();
+    const hoy = new Date();
+    const nMes = req.query.mes ? Number(req.query.mes) : (hoy.getMonth() + 1);
+    const nAnio = req.query.anio ? Number(req.query.anio) : hoy.getFullYear();
 
     if (!Number.isFinite(nMes) || nMes < 1 || nMes > 12) {
       return res.status(400).json({ success: false, error: "mes inválido (1-12)" });
@@ -777,63 +771,77 @@ export const getEstadisticasPorMes = async (req, res) => {
     }
 
     const mesStr = String(nMes).padStart(2, "0");
-    const periodoBusqueda = `${mesStr}/${nAnio}`;
+    const periodoBusqueda = `${mesStr}/${nAnio}`; // coincide con el RPC "MM/YYYY"
 
-    // Rango mensual (evita bugs de timezone al filtrar por mes en JS)
-    const { startISO, endISO } = getMonthRangeUTC(nAnio, nMes);
+    // Rango para filtrar ventas (fecha es TIMESTAMP sin TZ en tu DB)
+    const start = `${nAnio}-${mesStr}-01 00:00:00`;
+    const endDate = new Date(nAnio, nMes, 1); // mes siguiente (nMes es 1-12; Date usa 0-11 pero acá funciona por constructor)
+    const endMesStr = String(endDate.getMonth() + 1).padStart(2, "0");
+    const end = `${endDate.getFullYear()}-${endMesStr}-01 00:00:00`;
 
-    // =========================================================
-    // 1) TRAER VENTAS DEL MES (FILTRADAS EN BD)
-    // =========================================================
-    const ventasQ = supabase
-      .from("venta")
-      .select(`
-        id,
-        total,
-        canal,
-        fecha,
-        estado_id,
-        cliente_id,
-        cliente:cliente_id ( id, nombre, apellido ),
-        detalle_venta (
-          producto_id,
-          cantidad,
-          subtotal,
-          producto:producto_id ( id, nombre, costo )
-        )
-      `)
-      .in("estado_id", [19, 26])
-      .gte("fecha", startISO)
-      .lt("fecha", endISO);
+    // ================== FUENTES EN PARALELO ==================
+    const [tallerResp, ventasResp] = await Promise.all([
+      supabase.rpc("obtener_balance_presupuestos"),
+      supabase
+        .from("venta")
+        .select(`
+          id,
+          total,
+          canal,
+          fecha,
+          estado_id,
+          cliente_id,
+          cliente:cliente_id ( id, nombre, apellido ),
+          detalle_venta (
+            producto_id,
+            cantidad,
+            subtotal,
+            producto:producto_id ( id, nombre, costo )
+          )
+        `)
+        .in("estado_id", [19, 26])
+        .gte("fecha", start)
+        .lt("fecha", end),
+    ]);
 
-    const { data: ventasRows, error: ventasErr } = await ventasQ;
-    if (ventasErr) throw ventasErr;
+    if (tallerResp.error) {
+      console.error("Error RPC obtener_balance_presupuestos:", tallerResp.error);
+      return res.status(500).json({ success: false, error: tallerResp.error.message || "Error taller" });
+    }
+    if (ventasResp.error) {
+      console.error("Error query ventas:", ventasResp.error);
+      return res.status(500).json({ success: false, error: ventasResp.error.message || "Error ventas" });
+    }
 
-    const ventas = Array.isArray(ventasRows) ? ventasRows : [];
+    // ================== TALLER (RPC exacto) ==================
+    const tallerRows = Array.isArray(tallerResp.data) ? tallerResp.data : [];
 
-    // =========================================================
-    // 2) CALCULAR TOTALES + POR CANAL + DETALLES PARA FRONT
-    // =========================================================
+    const tallerDelMes = tallerRows.filter((r) => r?.mes === periodoBusqueda);
+
+    const totalFacturadoTaller = tallerDelMes.reduce((acc, r) => acc + Number(r?.total_total ?? 0), 0);
+    const costoTotalTaller = tallerDelMes.reduce((acc, r) => acc + Number(r?.costo_total ?? 0), 0);
+    const balanceTotalTaller = tallerDelMes.reduce((acc, r) => acc + Number(r?.balance_final ?? 0), 0);
+
+    // ================== VENTAS (por canal + top) ==================
+    const ventas = Array.isArray(ventasResp.data) ? ventasResp.data : [];
+
     let totalVentas = 0;
     let totalCostos = 0;
 
     let totalVentasLocal = 0;
-    let totalVentasWeb = 0;
-
     let totalCostosLocal = 0;
+
+    let totalVentasWeb = 0;
     let totalCostosWeb = 0;
 
-    // Para "Top clientes"
-    const gastoPorCliente = new Map(); // key: cliente_id -> { cliente_id, nombre, total }
-
-    // Para "Top productos"
-    const cantidadPorProducto = new Map(); // key: producto_id -> { producto_id, nombre_producto, cantidad }
+    // Top clientes / productos (para tu UI)
+    const gastoPorCliente = new Map();       // cliente_id -> {cliente_id, nombre, total}
+    const cantidadPorProducto = new Map();   // producto_id -> {producto_id, nombre_producto, cantidad}
 
     const ventasNormalizadas = ventas.map((v) => {
       const canal = v?.canal || "desconocido";
       const ventaTotal = Number(v?.total ?? 0);
 
-      // productos para tu front: v.productos
       const productos = (v?.detalle_venta || []).map((dv) => {
         const productoId = Number(dv?.producto_id ?? dv?.producto?.id ?? 0);
         const nombreProducto = dv?.producto?.nombre ?? "Producto";
@@ -841,10 +849,9 @@ export const getEstadisticasPorMes = async (req, res) => {
         const subtotal = Number(dv?.subtotal ?? 0);
         const costoUnit = Number(dv?.producto?.costo ?? 0);
 
-        // costo total del item
         const costoItem = costoUnit * cantidad;
 
-        // acumular top productos
+        // Top productos
         if (productoId) {
           const prev = cantidadPorProducto.get(productoId);
           if (prev) prev.cantidad += cantidad;
@@ -862,14 +869,13 @@ export const getEstadisticasPorMes = async (req, res) => {
         };
       });
 
-      // costos de la venta (sum item costos)
-      const costoVenta = productos.reduce((acc, p) => acc + Number(p.costo_total || 0), 0);
+      const costoVenta = productos.reduce((acc, p) => acc + Number(p?.costo_total ?? 0), 0);
 
-      // acumular totales generales
+      // Totales globales
       totalVentas += ventaTotal;
       totalCostos += costoVenta;
 
-      // acumular por canal
+      // Totales por canal
       if (canal === "local") {
         totalVentasLocal += ventaTotal;
         totalCostosLocal += costoVenta;
@@ -878,13 +884,12 @@ export const getEstadisticasPorMes = async (req, res) => {
         totalCostosWeb += costoVenta;
       }
 
-      // acumular top clientes (si existe cliente)
+      // Top clientes
       const clienteId = Number(v?.cliente_id ?? v?.cliente?.id ?? 0);
       if (clienteId) {
         const nombre = v?.cliente
           ? `${v.cliente.nombre || ""} ${v.cliente.apellido || ""}`.trim()
           : `Cliente ${clienteId}`;
-
         const prev = gastoPorCliente.get(clienteId);
         if (prev) prev.total += ventaTotal;
         else gastoPorCliente.set(clienteId, { cliente_id: clienteId, nombre, total: ventaTotal });
@@ -895,66 +900,80 @@ export const getEstadisticasPorMes = async (req, res) => {
         fecha: v?.fecha ?? null,
         canal,
         total: ventaTotal,
-        cliente: v?.cliente
-          ? { cliente_id: Number(v.cliente.id), nombre: `${v.cliente.nombre || ""} ${v.cliente.apellido || ""}`.trim() }
-          : null,
-        productos, // 👈 esto es lo que tu front usa: ventas.flatMap(v => v.productos)
-        costo_venta: costoVenta,
-        ganancia_venta: ventaTotal - costoVenta,
+        productos, // 👈 tu front hace ventas.flatMap(v => v.productos)
       };
     });
 
     const totalGanancia = totalVentas - totalCostos;
 
     const ventasResumen = {
-      total_ventas: totalVentas,
-      total_costos: totalCostos,
-      total_ganancia: totalGanancia,
+      // ✅ tu frontend lee ventasResumen?.data?.total_ventas etc.
+      data: {
+        total_ventas: totalVentas,
+        total_costos: totalCostos,
+        total_ganancia: totalGanancia,
 
-      // ✅ extra para que puedas mostrar local vs web_shop
-      por_canal: {
-        local: {
-          total_ventas: totalVentasLocal,
-          total_costos: totalCostosLocal,
-          total_ganancia: totalVentasLocal - totalCostosLocal,
+        // ✅ división por canal
+        por_canal: {
+          local: {
+            total_ventas: totalVentasLocal,
+            total_costos: totalCostosLocal,
+            total_ganancia: totalVentasLocal - totalCostosLocal,
+          },
+          web_shop: {
+            total_ventas: totalVentasWeb,
+            total_costos: totalCostosWeb,
+            total_ganancia: totalVentasWeb - totalCostosWeb,
+          },
         },
-        web_shop: {
-          total_ventas: totalVentasWeb,
-          total_costos: totalCostosWeb,
-          total_ganancia: totalVentasWeb - totalCostosWeb,
-        },
+
+        // ✅ tu frontend usa: ventasResumen?.data?.ventas.flatMap(...)
+        ventas: ventasNormalizadas,
+
+        // ✅ ya listo para “Top clientes” si lo querés consumir directo
+        top_clientes: Array.from(gastoPorCliente.values())
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 5),
+
+        // ✅ ya listo para “Top productos”
+        top_productos: Array.from(cantidadPorProducto.values())
+          .sort((a, b) => b.cantidad - a.cantidad)
+          .slice(0, 5),
       },
-
-      // ✅ esto lo usa tu front
-      ventas: ventasNormalizadas,
-
-      // ✅ útiles para tu "Resumen rápido" (si querés consumirlo directo)
-      top_clientes: Array.from(gastoPorCliente.values())
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 5),
-
-      top_productos: Array.from(cantidadPorProducto.values())
-        .sort((a, b) => b.cantidad - a.cantidad)
-        .slice(0, 5),
     };
 
-    // =========================================================
-    // 3) RESPUESTA (MANTENÉ TU BLOQUE EXISTENTE DE TALLER)
-    // =========================================================
+    // ================== RESPUESTA FINAL (NO ROMPER PRODUCCIÓN) ==================
+    const resumen_general = {
+      total_facturado: totalFacturadoTaller,
+      costo_total: costoTotalTaller,
+      balance_total: balanceTotalTaller,
+    };
+
     return res.status(200).json({
       success: true,
+
+      // ✅ Retrocompatibilidad: por si tu front usa resumen.resumen_general directo
+      resumen_general,
+
+      // ✅ Formato estándar: todo dentro de data
       data: {
         periodo: periodoBusqueda,
 
-        // ⬇️ mantené lo que ya devolvías para Servicio Técnico
-        // resumen_general: { total_facturado, costo_total, balance_total, ... }
+        // ✅ Servicio Técnico (lo que tu componente necesita)
+        resumen_general,
 
-        // ⬇️ NUEVO: ventas (compatible con tu frontend)
+        // Extras útiles
+        taller: {
+          cantidad_equipos: tallerDelMes.length,
+          detalle_por_equipo: tallerDelMes, // si luego querés mostrar cards por equipo
+        },
+
+        // ✅ Ventas del mes (para el fragmento de ventas)
         ventasResumen,
       },
     });
   } catch (error) {
-    console.error("Error en getResumenMes:", error);
+    console.error("Error en getEstadisticasPorMes:", error);
     return res.status(500).json({ success: false, error: error.message || "Error interno" });
   }
 };
