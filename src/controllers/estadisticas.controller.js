@@ -759,72 +759,87 @@ export const getReparacionesComunes = async (req, res) => {
 export const getEstadisticasPorMes = async (req, res) => {
   try {
     const fechaActual = new Date();
-    const nMes = req.query.mes ? Number(req.query.mes) : fechaActual.getMonth() + 1;
+    const nMes = req.query.mes ? Number(req.query.mes) : (fechaActual.getMonth() + 1);
     const nAnio = req.query.anio ? Number(req.query.anio) : fechaActual.getFullYear();
 
-    const inicioMes = new Date(nAnio, nMes - 1, 1).toISOString();
-    const finMes = new Date(nAnio, nMes, 0, 23, 59, 59).toISOString();
+    const mesStr = String(nMes).padStart(2, '0');
+    const periodoBusqueda = `${mesStr}/${nAnio}`; // Formato "MM/YYYY" para equipos
 
-    const [ventasResp, presupuestosResp] = await Promise.all([
+    // 1. Ejecutamos las dos fuentes de verdad en paralelo
+    const [tallerResp, ventasResp] = await Promise.all([
+      supabase.rpc('obtener_balance_presupuestos'),
       supabase
-        .from('venta')
+        .from("venta")
         .select(`
-          total,
+          total, canal, fecha, estado_id,
           detalle_venta (
-            cantidad,
-            subtotal,
-            producto:producto!detalle_venta_producto_id_fkey ( costo )
+            cantidad, subtotal,
+            producto:producto_id ( costo )
           )
         `)
-        .gte('fecha', inicioMes)
-        .lte('fecha', finMes)
-        .not('estado_id', 'in', '(20, 28)'), // 👈 EXCLUIMOS INACTIVOS (20) Y CANCELADOS (28)
-
-      supabase
-        .from('presupuesto')
-        .select('total, costo')
-        .gte('fecha', inicioMes)
-        .lte('fecha', finMes)
-        .not('estado_id', 'in', '(3, 18, 20)') // 👈 EXCLUIMOS RECHAZADOS, BAJAS E INACTIVOS
+        .in("estado_id", [19, 26]) // Estados: Activos
     ]);
 
+    if (tallerResp.error) throw tallerResp.error;
     if (ventasResp.error) throw ventasResp.error;
-    if (presupuestosResp.error) throw presupuestosResp.error;
 
-    let totalVentasBruto = 0;
-    let gananciaNetaVentas = 0;
+    // --- PROCESAR TALLER (Siguiendo la lógica de getBalancePresupuestos) ---
+    // Filtramos exactamente por el mes y año solicitado
+    const tallerDelMes = (tallerResp.data || []).filter(r => r.mes === periodoBusqueda);
+    const totalBalanceTaller = tallerDelMes.reduce((acc, curr) => acc + Number(curr.balance_final || 0), 0);
+
+    // --- PROCESAR VENTAS (Siguiendo la lógica de getVentas) ---
+    let gananciaLocal = 0;
+    let gananciaWeb = 0;
 
     ventasResp.data.forEach(v => {
-      totalVentasBruto += Number(v.total || 0);
-      v.detalle_venta?.forEach(dv => {
-        const costoTotalProd = Number(dv.producto?.costo || 0) * Number(dv.cantidad || 0);
-        gananciaNetaVentas += (Number(dv.subtotal || 0) - costoTotalProd);
-      });
+      // Filtramos por mes y año la fecha de la venta
+      const fechaVenta = new Date(v.fecha);
+      const ventaMes = fechaVenta.getMonth() + 1;
+      const ventaAnio = fechaVenta.getFullYear();
+
+      if (ventaMes === nMes && ventaAnio === nAnio) {
+        let gananciaVentaActual = 0;
+        
+        v.detalle_venta?.forEach(dv => {
+          const subtotal = Number(dv.subtotal || 0);
+          const costoUnitario = Number(dv.producto?.costo || 0);
+          const cantidad = Number(dv.cantidad || 0);
+          // Ganancia Neta = Precio de venta - Costo de reposición
+          gananciaVentaActual += (subtotal - (costoUnitario * cantidad));
+        });
+
+        if (v.canal === 'local') {
+          gananciaLocal += gananciaVentaActual;
+        } else if (v.canal === 'web_shop') {
+          gananciaWeb += gananciaVentaActual;
+        }
+      }
     });
 
-    let totalTallerBruto = 0;
-    let gananciaNetaTaller = 0;
+    const totalGananciaVentas = gananciaLocal + gananciaWeb;
 
-    presupuestosResp.data.forEach(p => {
-      totalTallerBruto += Number(p.total || 0);
-      gananciaNetaTaller += (Number(p.total || 0) - Number(p.costo || 0));
-    });
-
-    return res.json({
+    // --- RESULTADO FINAL ---
+    return res.status(200).json({
       success: true,
-      mes: nMes,
-      anio: nAnio,
       data: {
-        ventas_bruto: totalVentasBruto,
-        ventas_neto: gananciaNetaVentas,
-        taller_bruto: totalTallerBruto,
-        taller_neto: gananciaNetaTaller,
-        balance_total_general: gananciaNetaVentas + gananciaNetaTaller
+        periodo: periodoBusqueda,
+        taller: {
+          balance_neto: totalBalanceTaller, // Aquí daría 1.375.300
+          cantidad_equipos: tallerDelMes.length
+        },
+        ventas: {
+          ganancia_local: gananciaLocal,
+          ganancia_web: gananciaWeb,
+          total_ganancia_ventas: totalGananciaVentas
+        },
+        balance_general_total: totalBalanceTaller + totalGananciaVentas // Total: 1.731.175
       }
     });
 
   } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Error en Dashboard consolidado:", error.message);
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 /**
