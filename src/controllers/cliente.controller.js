@@ -95,10 +95,12 @@ import { supabase } from '../config/supabase.js';
 /* Obtener todos los clientes */
 export const getClientes = async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('cliente')
-      .select('*')
-      .order('id', { ascending: false });
+    // En tu archivo de controladores de cliente, busca el GET principal y añade:
+const { data, error } = await supabase
+  .from('cliente')
+  .select('*')
+  .neq('estado_id', 18) // Excluir los que están dados de baja
+  .order('nombre', { ascending: true });
 
     if (error) throw error;
     res.json(data);
@@ -336,30 +338,48 @@ export const updateCliente = async (req, res) => {
 };
 
 
-/* Eliminar cliente */
+
+/* Eliminar cliente (Borrado Lógico usando ID 18) */
 export const deleteCliente = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ msg: 'ID de cliente requerido' });
+    }
+
+    // Actualizamos al ID 18 que es "Registro dado de baja" en ámbito "general"
     const { data, error } = await supabase
       .from('cliente')
-      .delete()
+      .update({ 
+        estado_id: 18, 
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', id)
       .select()
       .single();
 
     if (error) {
-      // si no existe -> single() devuelve error con texto "Results contain 0 rows"
-      if (/No rows|Results contain 0 rows/i.test(error.message || '')) {
+      if (error.code === 'PGRST116') {
         return res.status(404).json({ msg: 'Cliente no encontrado' });
       }
-      return res.status(500).json({ error: error.message || error });
+      throw error;
     }
 
-    res.json({ msg: 'Cliente eliminado correctamente', cliente: data });
+    return res.json({ 
+      msg: 'Cliente eliminado correctamente (Registro dado de baja)', 
+      cliente: data 
+    });
+
   } catch (err) {
-    res.status(500).json({ error: err.message || err });
+    console.error('❌ Error en deleteCliente:', err.message);
+    return res.status(500).json({ 
+      msg: 'Error al procesar la baja del cliente', 
+      error: err.message 
+    });
   }
-};
+};;
+
 /* Obtener cliente por ID */
 export const getClienteById = async (req, res) => {
   try {

@@ -581,6 +581,11 @@ export const getHistorialCliente = async (req, res) => {
 // };
 
 // Función auxiliar para convertir fechas a timestamp (para ordenamiento)
+
+
+
+
+
 const ts = (d) => (d ? new Date(d).getTime() : -Infinity);
 
 export const getHistorialClienteByClienteId = async (req, res) => {
@@ -592,8 +597,9 @@ export const getHistorialClienteByClienteId = async (req, res) => {
       return res.status(400).json({ error: "clienteId inválido" });
     }
 
-    // Ejecutamos ambas consultas en paralelo usando el cliente de Supabase
+    // 1. Ejecutamos ambas consultas en paralelo
     const [equiposResp, ventasResp] = await Promise.all([
+      // CONSULTA DE EQUIPOS E INGRESOS
       supabase
         .from('equipo')
         .select(`
@@ -609,6 +615,7 @@ export const getHistorialClienteByClienteId = async (req, res) => {
         `)
         .eq('cliente_id', id),
       
+      // CONSULTA DE VENTAS Y DETALLES
       supabase
         .from('venta')
         .select(`
@@ -617,7 +624,7 @@ export const getHistorialClienteByClienteId = async (req, res) => {
           cupon:cupon_id (id, codigo, descuento_porcentaje, descuento_monto),
           detalle_venta (
             id, producto_id, cantidad, precio_unitario, subtotal,
-            producto:producto_id (nombre)
+            producto:producto!producto_id ( nombre ) 
           )
         `)
         .eq('cliente_id', id)
@@ -627,7 +634,7 @@ export const getHistorialClienteByClienteId = async (req, res) => {
     if (equiposResp.error) throw equiposResp.error;
     if (ventasResp.error) throw ventasResp.error;
 
-    // --- PROCESAR EQUIPOS ---
+    // 2. PROCESAR Y FORMATEAR EQUIPOS
     const equipos = (equiposResp.data || []).map(eq => {
       let maxFecha = -Infinity;
       
@@ -663,7 +670,7 @@ export const getHistorialClienteByClienteId = async (req, res) => {
     }).sort((a, b) => b._maxFecha - a._maxFecha)
       .map(({ _maxFecha, ...rest }) => rest);
 
-    // --- PROCESAR VENTAS ---
+    // 3. PROCESAR Y FORMATEAR VENTAS
     const ventas = (ventasResp.data || []).map(v => ({
       venta_id: v.id,
       fecha: v.fecha,
@@ -676,19 +683,23 @@ export const getHistorialClienteByClienteId = async (req, res) => {
       detalles: (v.detalle_venta || []).map(dv => ({
         detalle_venta_id: dv.id,
         producto_id: dv.producto_id,
-        producto_nombre: dv.producto?.nombre || null,
+        producto_nombre: dv.producto?.nombre || "Producto no encontrado",
         cantidad: dv.cantidad,
         precio_unitario: dv.precio_unitario,
         subtotal: dv.subtotal
       }))
     })).sort((a, b) => ts(b.fecha) - ts(a.fecha));
 
-    // Si no hay absolutamente nada
+    // 4. RESPUESTA FINAL
     if (equipos.length === 0 && ventas.length === 0) {
-      return res.status(404).json({ error: "No se encontró historial para este cliente." });
+      return res.status(404).json({ 
+        success: false, 
+        error: "No se encontró historial para este cliente." 
+      });
     }
 
     return res.json({ 
+      success: true,
       cliente_id: id, 
       equipos, 
       ventas 
@@ -697,6 +708,7 @@ export const getHistorialClienteByClienteId = async (req, res) => {
   } catch (error) {
     console.error("❌ Error en getHistorialClienteByClienteId:", error.message || error);
     return res.status(500).json({ 
+      success: false,
       error: "Error al obtener historial",
       details: error.message 
     });
