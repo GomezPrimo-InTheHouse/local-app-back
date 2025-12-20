@@ -382,7 +382,7 @@
 import { supabase } from '../config/supabase.js';
 
 // Helper para convertir fechas a timestamp para ordenamiento
-const ts = (d) => (d ? new Date(d).getTime() : -Infinity);
+
 
 export const getHistorialCliente = async (req, res) => {
   try {
@@ -471,6 +471,118 @@ export const getHistorialCliente = async (req, res) => {
   }
 };
 
+// export const getHistorialClienteByClienteId = async (req, res) => {
+//   try {
+//     const { clienteId } = req.params;
+//     const id = Number(clienteId);
+
+//     if (!Number.isFinite(id)) {
+//       return res.status(400).json({ error: "clienteId inválido" });
+//     }
+
+//     // Ejecutamos ambas consultas en paralelo usando el cliente de Supabase
+//     const [equiposResp, ventasResp] = await Promise.all([
+//       supabase
+//         .from('equipo')
+//         .select(`
+//           id, tipo, marca, modelo, problema, cliente_id,
+//           ingreso (
+//             id, fecha_ingreso, fecha_egreso,
+//             estado:estado_id (id, nombre),
+//             presupuesto (
+//               id, fecha, costo, total, observaciones,
+//               estado:estado_id (id, nombre)
+//             )
+//           )
+//         `)
+//         .eq('cliente_id', id),
+      
+//       supabase
+//         .from('venta')
+//         .select(`
+//           id, fecha, total, monto_abonado, saldo, canal,
+//           estado:estado_id (id, nombre),
+//           cupon:cupon_id (id, codigo, descuento_porcentaje, descuento_monto),
+//           detalle_venta (
+//             id, producto_id, cantidad, precio_unitario, subtotal,
+//             producto:producto_id (nombre)
+//           )
+//         `)
+//         .eq('cliente_id', id)
+//     ]);
+
+//     if (equiposResp.error) throw equiposResp.error;
+//     if (ventasResp.error) throw ventasResp.error;
+
+//     // --- PROCESAR EQUIPOS ---
+//     const equipos = (equiposResp.data || []).map(eq => {
+//       let maxFecha = -Infinity;
+//       const ingresos = (eq.ingreso || []).map(ing => {
+//         const fi = ts(ing.fecha_ingreso);
+//         if (fi > maxFecha) maxFecha = fi;
+//         return {
+//           ingreso_id: ing.id,
+//           fecha_ingreso: ing.fecha_ingreso,
+//           fecha_egreso: ing.fecha_egreso,
+//           estado: ing.estado,
+//           presupuestos: (ing.presupuesto || []).map(p => ({
+//             presupuesto_id: p.id,
+//             fecha: p.fecha,
+//             costo: p.costo,
+//             total: p.total,
+//             observaciones: p.observaciones,
+//             estado: p.estado
+//           })).sort((a, b) => ts(b.fecha) - ts(a.fecha))
+//         };
+//       }).sort((a, b) => ts(b.fecha_ingreso) - ts(a.fecha_ingreso));
+
+//       return {
+//         equipo_id: eq.id,
+//         tipo: eq.tipo,
+//         marca: eq.marca,
+//         modelo: eq.modelo,
+//         problema: eq.problema,
+//         ingresos,
+//         _maxFecha: maxFecha
+//       };
+//     }).sort((a, b) => b._maxFecha - a._maxFecha)
+//       .map(({ _maxFecha, ...rest }) => rest);
+
+//     // --- PROCESAR VENTAS ---
+//     const ventas = (ventasResp.data || []).map(v => ({
+//       venta_id: v.id,
+//       fecha: v.fecha,
+//       total: v.total,
+//       monto_abonado: v.monto_abonado,
+//       saldo: v.saldo,
+//       canal: v.canal,
+//       estado: v.estado,
+//       cupon: v.cupon,
+//       detalles: (v.detalle_venta || []).map(dv => ({
+//         detalle_venta_id: dv.id,
+//         producto_id: dv.producto_id,
+//         producto_nombre: dv.producto?.nombre || null,
+//         cantidad: dv.cantidad,
+//         precio_unitario: dv.precio_unitario,
+//         subtotal: dv.subtotal
+//       }))
+//     })).sort((a, b) => ts(b.fecha) - ts(a.fecha));
+
+//     if (equipos.length === 0 && ventas.length === 0) {
+//       return res.status(404).json({ error: "No se encontró historial." });
+//     }
+
+//     return res.json({ cliente_id: id, equipos, ventas });
+
+//   } catch (error) {
+//     console.error("Error en getHistorialClienteByClienteId:", error.message);
+//     return res.status(500).json({ error: "Error al obtener historial" });
+//   }
+// };
+
+// Función auxiliar para convertir fechas a timestamp (para ordenamiento)
+const ts = (d) => (d ? new Date(d).getTime() : -Infinity);
+
 export const getHistorialClienteByClienteId = async (req, res) => {
   try {
     const { clienteId } = req.params;
@@ -488,10 +600,10 @@ export const getHistorialClienteByClienteId = async (req, res) => {
           id, tipo, marca, modelo, problema, cliente_id,
           ingreso (
             id, fecha_ingreso, fecha_egreso,
-            estado:estado_id (id, nombre),
+            estado:estado!estado_id (id, nombre),
             presupuesto (
               id, fecha, costo, total, observaciones,
-              estado:estado_id (id, nombre)
+              estado:estado!estado_id (id, nombre)
             )
           )
         `)
@@ -501,7 +613,7 @@ export const getHistorialClienteByClienteId = async (req, res) => {
         .from('venta')
         .select(`
           id, fecha, total, monto_abonado, saldo, canal,
-          estado:estado_id (id, nombre),
+          estado:estado!estado_id (id, nombre),
           cupon:cupon_id (id, codigo, descuento_porcentaje, descuento_monto),
           detalle_venta (
             id, producto_id, cantidad, precio_unitario, subtotal,
@@ -511,15 +623,18 @@ export const getHistorialClienteByClienteId = async (req, res) => {
         .eq('cliente_id', id)
     ]);
 
+    // Verificar errores de Supabase
     if (equiposResp.error) throw equiposResp.error;
     if (ventasResp.error) throw ventasResp.error;
 
     // --- PROCESAR EQUIPOS ---
     const equipos = (equiposResp.data || []).map(eq => {
       let maxFecha = -Infinity;
+      
       const ingresos = (eq.ingreso || []).map(ing => {
         const fi = ts(ing.fecha_ingreso);
         if (fi > maxFecha) maxFecha = fi;
+        
         return {
           ingreso_id: ing.id,
           fecha_ingreso: ing.fecha_ingreso,
@@ -568,14 +683,22 @@ export const getHistorialClienteByClienteId = async (req, res) => {
       }))
     })).sort((a, b) => ts(b.fecha) - ts(a.fecha));
 
+    // Si no hay absolutamente nada
     if (equipos.length === 0 && ventas.length === 0) {
-      return res.status(404).json({ error: "No se encontró historial." });
+      return res.status(404).json({ error: "No se encontró historial para este cliente." });
     }
 
-    return res.json({ cliente_id: id, equipos, ventas });
+    return res.json({ 
+      cliente_id: id, 
+      equipos, 
+      ventas 
+    });
 
   } catch (error) {
-    console.error("Error en getHistorialClienteByClienteId:", error.message);
-    return res.status(500).json({ error: "Error al obtener historial" });
+    console.error("❌ Error en getHistorialClienteByClienteId:", error.message || error);
+    return res.status(500).json({ 
+      error: "Error al obtener historial",
+      details: error.message 
+    });
   }
 };
