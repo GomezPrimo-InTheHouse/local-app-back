@@ -756,92 +756,209 @@ export const getReparacionesComunes = async (req, res) => {
 
 
 
+function getMonthRangeUTC(anio, mes1a12) {
+  const m = mes1a12 - 1; // Date.UTC usa 0-11
+  const start = new Date(Date.UTC(anio, m, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(anio, m + 1, 1, 0, 0, 0, 0));
+  return { startISO: start.toISOString(), endISO: end.toISOString() };
+}
+
 export const getEstadisticasPorMes = async (req, res) => {
   try {
     const fechaActual = new Date();
     const nMes = req.query.mes ? Number(req.query.mes) : (fechaActual.getMonth() + 1);
     const nAnio = req.query.anio ? Number(req.query.anio) : fechaActual.getFullYear();
 
-    const mesStr = String(nMes).padStart(2, '0');
-    const periodoBusqueda = `${mesStr}/${nAnio}`; // Formato "MM/YYYY" para equipos
+    if (!Number.isFinite(nMes) || nMes < 1 || nMes > 12) {
+      return res.status(400).json({ success: false, error: "mes inválido (1-12)" });
+    }
+    if (!Number.isFinite(nAnio) || nAnio < 2000 || nAnio > 2100) {
+      return res.status(400).json({ success: false, error: "anio inválido" });
+    }
 
-    // 1. Ejecutamos las dos fuentes de verdad en paralelo
-    const [tallerResp, ventasResp] = await Promise.all([
-      supabase.rpc('obtener_balance_presupuestos'),
-      supabase
-        .from("venta")
-        .select(`
-          total, canal, fecha, estado_id,
-          detalle_venta (
-            cantidad, subtotal,
-            producto:producto_id ( costo )
-          )
-        `)
-        .in("estado_id", [19, 26]) // Estados: Activos
-    ]);
+    const mesStr = String(nMes).padStart(2, "0");
+    const periodoBusqueda = `${mesStr}/${nAnio}`;
 
-    if (tallerResp.error) throw tallerResp.error;
-    if (ventasResp.error) throw ventasResp.error;
+    // Rango mensual (evita bugs de timezone al filtrar por mes en JS)
+    const { startISO, endISO } = getMonthRangeUTC(nAnio, nMes);
 
-    // --- PROCESAR TALLER (Siguiendo la lógica de getBalancePresupuestos) ---
-    // Filtramos exactamente por el mes y año solicitado
-    const tallerDelMes = (tallerResp.data || []).filter(r => r.mes === periodoBusqueda);
-    const totalBalanceTaller = tallerDelMes.reduce((acc, curr) => acc + Number(curr.balance_final || 0), 0);
+    // =========================================================
+    // 1) TRAER VENTAS DEL MES (FILTRADAS EN BD)
+    // =========================================================
+    const ventasQ = supabase
+      .from("venta")
+      .select(`
+        id,
+        total,
+        canal,
+        fecha,
+        estado_id,
+        cliente_id,
+        cliente:cliente_id ( id, nombre, apellido ),
+        detalle_venta (
+          producto_id,
+          cantidad,
+          subtotal,
+          producto:producto_id ( id, nombre, costo )
+        )
+      `)
+      .in("estado_id", [19, 26])
+      .gte("fecha", startISO)
+      .lt("fecha", endISO);
 
-    // --- PROCESAR VENTAS (Siguiendo la lógica de getVentas) ---
-    let gananciaLocal = 0;
-    let gananciaWeb = 0;
+    const { data: ventasRows, error: ventasErr } = await ventasQ;
+    if (ventasErr) throw ventasErr;
 
-    ventasResp.data.forEach(v => {
-      // Filtramos por mes y año la fecha de la venta
-      const fechaVenta = new Date(v.fecha);
-      const ventaMes = fechaVenta.getMonth() + 1;
-      const ventaAnio = fechaVenta.getFullYear();
+    const ventas = Array.isArray(ventasRows) ? ventasRows : [];
 
-      if (ventaMes === nMes && ventaAnio === nAnio) {
-        let gananciaVentaActual = 0;
-        
-        v.detalle_venta?.forEach(dv => {
-          const subtotal = Number(dv.subtotal || 0);
-          const costoUnitario = Number(dv.producto?.costo || 0);
-          const cantidad = Number(dv.cantidad || 0);
-          // Ganancia Neta = Precio de venta - Costo de reposición
-          gananciaVentaActual += (subtotal - (costoUnitario * cantidad));
-        });
+    // =========================================================
+    // 2) CALCULAR TOTALES + POR CANAL + DETALLES PARA FRONT
+    // =========================================================
+    let totalVentas = 0;
+    let totalCostos = 0;
 
-        if (v.canal === 'local') {
-          gananciaLocal += gananciaVentaActual;
-        } else if (v.canal === 'web_shop') {
-          gananciaWeb += gananciaVentaActual;
+    let totalVentasLocal = 0;
+    let totalVentasWeb = 0;
+
+    let totalCostosLocal = 0;
+    let totalCostosWeb = 0;
+
+    // Para "Top clientes"
+    const gastoPorCliente = new Map(); // key: cliente_id -> { cliente_id, nombre, total }
+
+    // Para "Top productos"
+    const cantidadPorProducto = new Map(); // key: producto_id -> { producto_id, nombre_producto, cantidad }
+
+    const ventasNormalizadas = ventas.map((v) => {
+      const canal = v?.canal || "desconocido";
+      const ventaTotal = Number(v?.total ?? 0);
+
+      // productos para tu front: v.productos
+      const productos = (v?.detalle_venta || []).map((dv) => {
+        const productoId = Number(dv?.producto_id ?? dv?.producto?.id ?? 0);
+        const nombreProducto = dv?.producto?.nombre ?? "Producto";
+        const cantidad = Number(dv?.cantidad ?? 0);
+        const subtotal = Number(dv?.subtotal ?? 0);
+        const costoUnit = Number(dv?.producto?.costo ?? 0);
+
+        // costo total del item
+        const costoItem = costoUnit * cantidad;
+
+        // acumular top productos
+        if (productoId) {
+          const prev = cantidadPorProducto.get(productoId);
+          if (prev) prev.cantidad += cantidad;
+          else cantidadPorProducto.set(productoId, { producto_id: productoId, nombre_producto: nombreProducto, cantidad });
         }
+
+        return {
+          producto_id: productoId,
+          nombre_producto: nombreProducto,
+          cantidad,
+          subtotal,
+          costo_unitario: costoUnit,
+          costo_total: costoItem,
+          ganancia_item: subtotal - costoItem,
+        };
+      });
+
+      // costos de la venta (sum item costos)
+      const costoVenta = productos.reduce((acc, p) => acc + Number(p.costo_total || 0), 0);
+
+      // acumular totales generales
+      totalVentas += ventaTotal;
+      totalCostos += costoVenta;
+
+      // acumular por canal
+      if (canal === "local") {
+        totalVentasLocal += ventaTotal;
+        totalCostosLocal += costoVenta;
+      } else if (canal === "web_shop") {
+        totalVentasWeb += ventaTotal;
+        totalCostosWeb += costoVenta;
       }
+
+      // acumular top clientes (si existe cliente)
+      const clienteId = Number(v?.cliente_id ?? v?.cliente?.id ?? 0);
+      if (clienteId) {
+        const nombre = v?.cliente
+          ? `${v.cliente.nombre || ""} ${v.cliente.apellido || ""}`.trim()
+          : `Cliente ${clienteId}`;
+
+        const prev = gastoPorCliente.get(clienteId);
+        if (prev) prev.total += ventaTotal;
+        else gastoPorCliente.set(clienteId, { cliente_id: clienteId, nombre, total: ventaTotal });
+      }
+
+      return {
+        venta_id: Number(v?.id ?? 0),
+        fecha: v?.fecha ?? null,
+        canal,
+        total: ventaTotal,
+        cliente: v?.cliente
+          ? { cliente_id: Number(v.cliente.id), nombre: `${v.cliente.nombre || ""} ${v.cliente.apellido || ""}`.trim() }
+          : null,
+        productos, // 👈 esto es lo que tu front usa: ventas.flatMap(v => v.productos)
+        costo_venta: costoVenta,
+        ganancia_venta: ventaTotal - costoVenta,
+      };
     });
 
-    const totalGananciaVentas = gananciaLocal + gananciaWeb;
+    const totalGanancia = totalVentas - totalCostos;
 
-    // --- RESULTADO FINAL ---
+    const ventasResumen = {
+      total_ventas: totalVentas,
+      total_costos: totalCostos,
+      total_ganancia: totalGanancia,
+
+      // ✅ extra para que puedas mostrar local vs web_shop
+      por_canal: {
+        local: {
+          total_ventas: totalVentasLocal,
+          total_costos: totalCostosLocal,
+          total_ganancia: totalVentasLocal - totalCostosLocal,
+        },
+        web_shop: {
+          total_ventas: totalVentasWeb,
+          total_costos: totalCostosWeb,
+          total_ganancia: totalVentasWeb - totalCostosWeb,
+        },
+      },
+
+      // ✅ esto lo usa tu front
+      ventas: ventasNormalizadas,
+
+      // ✅ útiles para tu "Resumen rápido" (si querés consumirlo directo)
+      top_clientes: Array.from(gastoPorCliente.values())
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 5),
+
+      top_productos: Array.from(cantidadPorProducto.values())
+        .sort((a, b) => b.cantidad - a.cantidad)
+        .slice(0, 5),
+    };
+
+    // =========================================================
+    // 3) RESPUESTA (MANTENÉ TU BLOQUE EXISTENTE DE TALLER)
+    // =========================================================
     return res.status(200).json({
       success: true,
       data: {
         periodo: periodoBusqueda,
-        taller: {
-          balance_neto: totalBalanceTaller, // Aquí daría 1.375.300
-          cantidad_equipos: tallerDelMes.length
-        },
-        ventas: {
-          ganancia_local: gananciaLocal,
-          ganancia_web: gananciaWeb,
-          total_ganancia_ventas: totalGananciaVentas
-        },
-        balance_general_total: totalBalanceTaller + totalGananciaVentas // Total: 1.731.175
-      }
-    });
 
+        // ⬇️ mantené lo que ya devolvías para Servicio Técnico
+        // resumen_general: { total_facturado, costo_total, balance_total, ... }
+
+        // ⬇️ NUEVO: ventas (compatible con tu frontend)
+        ventasResumen,
+      },
+    });
   } catch (error) {
-    console.error("Error en Dashboard consolidado:", error.message);
-    return res.status(500).json({ success: false, error: error.message });
+    console.error("Error en getResumenMes:", error);
+    return res.status(500).json({ success: false, error: error.message || "Error interno" });
   }
 };
+
 /**
  * 💰 VENTAS: getResumenVentasPorMes (Lógica de mapeo de productos)
  */
