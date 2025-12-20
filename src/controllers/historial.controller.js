@@ -45,7 +45,7 @@
 //       )
 //       SELECT *
 //       FROM base
-      
+
 //       ORDER BY equipo_id ASC,
 //                fecha_ingreso DESC NULLS LAST,
 //                fecha_presupuesto DESC NULLS LAST;
@@ -496,7 +496,7 @@ export const getHistorialCliente = async (req, res) => {
 //           )
 //         `)
 //         .eq('cliente_id', id),
-      
+
 //       supabase
 //         .from('venta')
 //         .select(`
@@ -610,7 +610,7 @@ export const getHistorialClienteByClienteId = async (req, res) => {
           )
         `)
         .eq('cliente_id', id),
-      
+
       // VENTAS - Aquí aplicamos la solución al conflicto de FK
       supabase
         .from('venta')
@@ -684,7 +684,12 @@ export const getHistorialClienteByClienteId = async (req, res) => {
     })).sort((a, b) => ts(b.fecha) - ts(a.fecha));
 
     if (equipos.length === 0 && ventas.length === 0) {
-      return res.status(404).json({ success: false, error: "Sin historial." });
+      return res.json({
+        success: true,
+        cliente_id: id,
+        equipos: equipos || [],
+        ventas: ventas || []
+      });
     }
 
     return res.json({ success: true, cliente_id: id, equipos, ventas });

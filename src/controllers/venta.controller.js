@@ -456,7 +456,10 @@ export const deleteVenta = async (req, res) => {
     if (detalleFetchError) throw detalleFetchError;
 
     if (!detalles || detalles.length === 0) {
-      return res.status(404).json({ error: "No se encontraron detalles de la venta." });
+     return res.status(200).json({ success: true, message: "Venta ya estaba dada de baja o sin detalles activos" });
+
+
+      // return res.status(404).json({ error: "No se encontraron detalles de la venta." });
     }
 
     // 2️⃣ Restaurar stock de cada producto
@@ -484,10 +487,10 @@ export const deleteVenta = async (req, res) => {
       }
     }
 
-    // 3️⃣ Marcar los detalles como inactivos
+    // 3️⃣ Marcar los detalles como CANCELADOS - id = 28 (antes estaba el id 20)
     const { error: detalleError } = await supabase
       .from("detalle_venta")
-      .update({ estado_id: 20 }) // Estado "inactivo"
+      .update({ estado_id: 28 }) // Estado "CANCELADO"
       .eq("venta_id", id);
 
     if (detalleError) throw detalleError;
@@ -495,7 +498,7 @@ export const deleteVenta = async (req, res) => {
     // 4️⃣ Marcar la venta como inactiva
     const { error: ventaError } = await supabase
       .from("venta")
-      .update({ estado_id: 20 }) // Estado "inactivo"
+      .update({ estado_id: 28 }) // Estado "CANCELADO"
       .eq("id", id);
 
     if (ventaError) throw ventaError;

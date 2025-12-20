@@ -753,39 +753,78 @@ export const getReparacionesComunes = async (req, res) => {
 // };
 
 
+
+
+
 export const getEstadisticasPorMes = async (req, res) => {
   try {
-    const { mes, anio } = req.query;
-    if (!mes) return res.status(400).json({ error: 'Falta el parámetro mes' });
+    const fechaActual = new Date();
+    const nMes = req.query.mes ? Number(req.query.mes) : fechaActual.getMonth() + 1;
+    const nAnio = req.query.anio ? Number(req.query.anio) : fechaActual.getFullYear();
 
-    const nMes = Number(mes);
-    const nAnio = anio ? Number(anio) : new Date().getFullYear();
+    const inicioMes = new Date(nAnio, nMes - 1, 1).toISOString();
+    const finMes = new Date(nAnio, nMes, 0, 23, 59, 59).toISOString();
 
-    // Llamamos al nuevo RPC unificado
-    const { data, error } = await supabase.rpc('get_balances_mensuales', {
-      _mes: nMes,
-      _anio: nAnio
+    const [ventasResp, presupuestosResp] = await Promise.all([
+      supabase
+        .from('venta')
+        .select(`
+          total,
+          detalle_venta (
+            cantidad,
+            subtotal,
+            producto:producto!detalle_venta_producto_id_fkey ( costo )
+          )
+        `)
+        .gte('fecha', inicioMes)
+        .lte('fecha', finMes)
+        .not('estado_id', 'in', '(20, 28)'), // 👈 EXCLUIMOS INACTIVOS (20) Y CANCELADOS (28)
+
+      supabase
+        .from('presupuesto')
+        .select('total, costo')
+        .gte('fecha', inicioMes)
+        .lte('fecha', finMes)
+        .not('estado_id', 'in', '(3, 18, 20)') // 👈 EXCLUIMOS RECHAZADOS, BAJAS E INACTIVOS
+    ]);
+
+    if (ventasResp.error) throw ventasResp.error;
+    if (presupuestosResp.error) throw presupuestosResp.error;
+
+    let totalVentasBruto = 0;
+    let gananciaNetaVentas = 0;
+
+    ventasResp.data.forEach(v => {
+      totalVentasBruto += Number(v.total || 0);
+      v.detalle_venta?.forEach(dv => {
+        const costoTotalProd = Number(dv.producto?.costo || 0) * Number(dv.cantidad || 0);
+        gananciaNetaVentas += (Number(dv.subtotal || 0) - costoTotalProd);
+      });
     });
 
-    if (error) throw error;
+    let totalTallerBruto = 0;
+    let gananciaNetaTaller = 0;
 
-    // Supabase rpc devuelve un array, tomamos el primer (y único) registro
-    const estadisticas = data[0] || {
-      total_ventas_bruto: 0,
-      ganancia_neta_ventas: 0,
-      total_presupuestos_bruto: 0,
-      ganancia_neta_taller: 0,
-      balance_total_general: 0
-    };
+    presupuestosResp.data.forEach(p => {
+      totalTallerBruto += Number(p.total || 0);
+      gananciaNetaTaller += (Number(p.total || 0) - Number(p.costo || 0));
+    });
 
     return res.json({
       success: true,
-      data: estadisticas
+      mes: nMes,
+      anio: nAnio,
+      data: {
+        ventas_bruto: totalVentasBruto,
+        ventas_neto: gananciaNetaVentas,
+        taller_bruto: totalTallerBruto,
+        taller_neto: gananciaNetaTaller,
+        balance_total_general: gananciaNetaVentas + gananciaNetaTaller
+      }
     });
 
-  } catch (err) {
-    console.error('Error en getEstadisticasPorMes:', err.message);
-    res.status(500).json({ error: 'Error obteniendo estadísticas financieras' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 /**
