@@ -40,7 +40,7 @@ export const testDbConnection = async () => {
 };
 
 // Prueba la conexión al iniciar el módulo
-testDbConnection();
+// testDbConnection();
 
 
 // src/config/db.js
