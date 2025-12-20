@@ -11,21 +11,212 @@ import { pool } from '../config/supabaseAuthModule.js';
  * POST /equipo
  * Crea equipo + ingreso (mismo controller y transacción), y luego intenta enviar WhatsApp.
  */
+// export const createEquipo = async (req, res) => {
+//   const {
+//     tipo,
+//     marca,
+//     modelo,
+//     imei = null,          // 🔹 NUEVO: IMEI opcional
+//     password = null,
+//     problema = null,
+//     fecha_ingreso = null, // date (YYYY-MM-DD) para equipo.fecha_ingreso
+//     patron = null,
+//     cliente_id,
+//     estado_id,
+//   } = req.body || {};
+
+//   // Validación mínima
+//   if (
+//     !tipo || !marca || !modelo ||
+//     !Number.isInteger(Number(cliente_id)) ||
+//     !Number.isInteger(Number(estado_id))
+//   ) {
+//     return res.status(400).json({
+//       success: false,
+//       error:
+//         "Campos requeridos: tipo, marca, modelo, cliente_id (int) y estado_id (int).",
+//     });
+//   }
+
+//   // Normalización
+//   const v_tipo = String(tipo).trim();
+//   const v_marca = String(marca).trim();
+//   const v_modelo = String(modelo).trim();
+//   const v_imei = imei == null ? null : String(imei).trim(); // 🔹 IMEI opcional normalizado
+//   const v_password = password == null ? null : String(password).trim();
+//   const v_problema = problema == null ? null : String(problema).trim();
+//   const v_patron = patron == null ? null : String(patron).trim();
+//   const v_clienteId = Number(cliente_id);
+//   const v_estadoId = Number(estado_id);
+//   const v_fechaIngreso = fecha_ingreso ? String(fecha_ingreso) : null;
+
+//   const client = await pool.connect();
+//   try {
+//     // ================== TRANSACCIÓN ==================
+//     await client.query("BEGIN");
+
+//     // 1) INSERT equipo (agregamos imei en las columnas y parámetros)
+//     const insertEquipoSQL = `
+//       INSERT INTO equipo
+//         (tipo, marca, modelo, imei, problema, password, patron, cliente_id, estado_id, fecha_ingreso, created_at, updated_at)
+//       VALUES
+//         (
+//           $1::varchar,
+//           $2::varchar,
+//           $3::varchar,
+//           $4::varchar,
+//           $5::text,
+//           $6::varchar,
+//           $7::varchar,
+//           $8::int,
+//           $9::int,
+//           COALESCE($10::date, CURRENT_DATE),
+//           CURRENT_DATE,
+//           CURRENT_DATE
+//         )
+//       RETURNING
+//         id,
+//         tipo,
+//         marca,
+//         modelo,
+//         imei,
+//         problema,
+//         password,
+//         patron,
+//         cliente_id,
+//         estado_id,
+//         fecha_ingreso,
+//         created_at,
+//         updated_at
+//     `;
+
+//     const equipoParams = [
+//       v_tipo,         // $1
+//       v_marca,        // $2
+//       v_modelo,       // $3
+//       v_imei,         // $4 🔹
+//       v_problema,     // $5
+//       v_password,     // $6
+//       v_patron,       // $7
+//       v_clienteId,    // $8
+//       v_estadoId,     // $9
+//       v_fechaIngreso, // $10
+//     ];
+
+//     const eqRes = await client.query(insertEquipoSQL, equipoParams);
+//     const equipo = eqRes.rows[0];
+
+//     // 2) INSERT ingreso asociado (usa now() en zona horaria de Argentina)
+//     const insertIngresoSQL = `
+//       INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado_id)
+//       VALUES (
+//         $1::int,
+//         (now() at time zone 'America/Argentina/Buenos_Aires')::timestamp,
+//         NULL,
+//         $2::int
+//       )
+//       RETURNING id, equipo_id, fecha_ingreso, fecha_egreso, estado_id
+//     `;
+//     const ingParams = [equipo.id, v_estadoId];
+//     const ingRes = await client.query(insertIngresoSQL, ingParams);
+//     const ingreso = ingRes.rows[0];
+
+//     // 3) COMMIT (equipo+ingreso listos)
+//     await client.query("COMMIT");
+
+//     // ================== ENVÍO DE MENSAJE (fuera de la transacción) ==================
+//     // Obtener datos del cliente
+//     const clienteRes = await pool.query(
+//       `SELECT nombre, apellido, celular FROM cliente WHERE id = $1::int`,
+//       [v_clienteId]
+//     );
+//     const cliente = clienteRes.rows[0];
+
+//     if (!cliente) {
+//       // Si no hay cliente, devolvemos igual equipo & ingreso
+//       return res.status(201).json({
+//         success: true,
+//         data: { equipo, ingreso },
+//         message:
+//           "Equipo e ingreso registrados. Cliente no encontrado para enviar mensaje.",
+//       });
+//     }
+
+//     // Armar mensaje (número fijo, como pediste)
+//     const numeroDestino = "+5493534275476";
+//     const equipoDescripcion = `${v_tipo} ${v_marca} ${v_modelo}`;
+//     const fechaEquipoAR = new Date(
+//       equipo.fecha_ingreso
+//     ).toLocaleDateString("es-AR", {
+//       year: "numeric",
+//       month: "2-digit",
+//       day: "2-digit",
+//     });
+
+//     const payloadMs = {
+//       numero: numeroDestino,
+//       cliente,
+//       equipo: equipoDescripcion,
+//       // Podés agregar aquí imei si después querés que Twilio lo reciba:
+//       // imei: v_imei,
+//       // textoPersonalizado: `Hola ${cliente.nombre} ${cliente.apellido} ...`
+//     };
+
+//     try {
+//       // const twilioResponse = await axios.post(
+//       //   "http://localhost:7002/twilio/enviar-mensaje",
+//       //   payloadMs
+//       // );
+
+//       return res.status(201).json({
+//         success: true,
+//         data: { equipo, ingreso, mensaje: twilioResponse.data },
+//         message:
+//           "Equipo e ingreso registrados; mensaje enviado correctamente.",
+//       });
+//     } catch (twilioErr) {
+//       console.error(
+//         "⚠️ Error al enviar mensaje (Twilio):",
+//         twilioErr?.message || twilioErr
+//       );
+//       return res.status(201).json({
+//         success: true,
+//         data: { equipo, ingreso },
+//         warning:
+//           "Equipo e ingreso registrados, pero no se pudo enviar el mensaje al cliente.",
+//       });
+//     }
+//   } catch (err) {
+//     try {
+//       await client.query("ROLLBACK");
+//     } catch {}
+//     console.error("❌ Error en createEquipo (SQL txn):", err);
+//     return res.status(500).json({
+//       success: false,
+//       error: err.message || "Error al registrar equipo e ingreso",
+//     });
+//   } finally {
+//     client.release();
+//   }
+// };
+
+
+
 export const createEquipo = async (req, res) => {
   const {
     tipo,
     marca,
     modelo,
-    imei = null,          // 🔹 NUEVO: IMEI opcional
+    imei = null,
     password = null,
     problema = null,
-    fecha_ingreso = null, // date (YYYY-MM-DD) para equipo.fecha_ingreso
+    fecha_ingreso = null,
     patron = null,
     cliente_id,
     estado_id,
   } = req.body || {};
 
-  // Validación mínima
+  // 1. Validación mínima (Idéntica)
   if (
     !tipo || !marca || !modelo ||
     !Number.isInteger(Number(cliente_id)) ||
@@ -33,174 +224,122 @@ export const createEquipo = async (req, res) => {
   ) {
     return res.status(400).json({
       success: false,
-      error:
-        "Campos requeridos: tipo, marca, modelo, cliente_id (int) y estado_id (int).",
+      error: "Campos requeridos: tipo, marca, modelo, cliente_id (int) y estado_id (int).",
     });
   }
 
-  // Normalización
+  // 2. Normalización
   const v_tipo = String(tipo).trim();
   const v_marca = String(marca).trim();
   const v_modelo = String(modelo).trim();
-  const v_imei = imei == null ? null : String(imei).trim(); // 🔹 IMEI opcional normalizado
+  const v_imei = imei == null ? null : String(imei).trim();
   const v_password = password == null ? null : String(password).trim();
   const v_problema = problema == null ? null : String(problema).trim();
   const v_patron = patron == null ? null : String(patron).trim();
   const v_clienteId = Number(cliente_id);
   const v_estadoId = Number(estado_id);
-  const v_fechaIngreso = fecha_ingreso ? String(fecha_ingreso) : null;
+  const v_fechaIngreso = fecha_ingreso ? String(fecha_ingreso) : new Date().toISOString().split('T')[0];
 
-  const client = await pool.connect();
   try {
-    // ================== TRANSACCIÓN ==================
-    await client.query("BEGIN");
+    // ================== PASO 1: INSERT EQUIPO ==================
+    const { data: equipo, error: errorEquipo } = await supabase
+      .from('equipo')
+      .insert([{
+        tipo: v_tipo,
+        marca: v_marca,
+        modelo: v_modelo,
+        imei: v_imei,
+        problema: v_problema,
+        password: v_password,
+        patron: v_patron,
+        cliente_id: v_clienteId,
+        estado_id: v_estadoId,
+        fecha_ingreso: v_fechaIngreso,
+        created_at: new Date(),
+        updated_at: new Date()
+      }])
+      .select()
+      .single();
 
-    // 1) INSERT equipo (agregamos imei en las columnas y parámetros)
-    const insertEquipoSQL = `
-      INSERT INTO equipo
-        (tipo, marca, modelo, imei, problema, password, patron, cliente_id, estado_id, fecha_ingreso, created_at, updated_at)
-      VALUES
-        (
-          $1::varchar,
-          $2::varchar,
-          $3::varchar,
-          $4::varchar,
-          $5::text,
-          $6::varchar,
-          $7::varchar,
-          $8::int,
-          $9::int,
-          COALESCE($10::date, CURRENT_DATE),
-          CURRENT_DATE,
-          CURRENT_DATE
-        )
-      RETURNING
-        id,
-        tipo,
-        marca,
-        modelo,
-        imei,
-        problema,
-        password,
-        patron,
-        cliente_id,
-        estado_id,
-        fecha_ingreso,
-        created_at,
-        updated_at
-    `;
+    if (errorEquipo) throw errorEquipo;
 
-    const equipoParams = [
-      v_tipo,         // $1
-      v_marca,        // $2
-      v_modelo,       // $3
-      v_imei,         // $4 🔹
-      v_problema,     // $5
-      v_password,     // $6
-      v_patron,       // $7
-      v_clienteId,    // $8
-      v_estadoId,     // $9
-      v_fechaIngreso, // $10
-    ];
+    // ================== PASO 2: INSERT INGRESO ==================
+    // Para emular (now() at time zone 'America/Argentina/Buenos_Aires')
+    const fechaArg = new Date().toLocaleString("en-US", { timeZone: "America/Argentina/Buenos_Aires" });
+    
+    const { data: ingreso, error: errorIngreso } = await supabase
+      .from('ingreso')
+      .insert([{
+        equipo_id: equipo.id,
+        fecha_ingreso: new Date(fechaArg),
+        fecha_egreso: null,
+        estado_id: v_estadoId
+      }])
+      .select()
+      .single();
 
-    const eqRes = await client.query(insertEquipoSQL, equipoParams);
-    const equipo = eqRes.rows[0];
+    if (errorIngreso) {
+      // "Rollback" manual: Si falla el ingreso, borramos el equipo creado
+      await supabase.from('equipo').delete().eq('id', equipo.id);
+      throw errorIngreso;
+    }
 
-    // 2) INSERT ingreso asociado (usa now() en zona horaria de Argentina)
-    const insertIngresoSQL = `
-      INSERT INTO ingreso (equipo_id, fecha_ingreso, fecha_egreso, estado_id)
-      VALUES (
-        $1::int,
-        (now() at time zone 'America/Argentina/Buenos_Aires')::timestamp,
-        NULL,
-        $2::int
-      )
-      RETURNING id, equipo_id, fecha_ingreso, fecha_egreso, estado_id
-    `;
-    const ingParams = [equipo.id, v_estadoId];
-    const ingRes = await client.query(insertIngresoSQL, ingParams);
-    const ingreso = ingRes.rows[0];
-
-    // 3) COMMIT (equipo+ingreso listos)
-    await client.query("COMMIT");
-
-    // ================== ENVÍO DE MENSAJE (fuera de la transacción) ==================
-    // Obtener datos del cliente
-    const clienteRes = await pool.query(
-      `SELECT nombre, apellido, celular FROM cliente WHERE id = $1::int`,
-      [v_clienteId]
-    );
-    const cliente = clienteRes.rows[0];
+    // ================== PASO 3: OBTENER DATOS DEL CLIENTE ==================
+    const { data: cliente, error: errorCliente } = await supabase
+      .from('cliente')
+      .select('nombre, apellido, celular')
+      .eq('id', v_clienteId)
+      .single();
 
     if (!cliente) {
-      // Si no hay cliente, devolvemos igual equipo & ingreso
       return res.status(201).json({
         success: true,
         data: { equipo, ingreso },
-        message:
-          "Equipo e ingreso registrados. Cliente no encontrado para enviar mensaje.",
+        message: "Equipo e ingreso registrados. Cliente no encontrado para enviar mensaje.",
       });
     }
 
-    // Armar mensaje (número fijo, como pediste)
+    // ================== PASO 4: ENVÍO DE MENSAJE ==================
     const numeroDestino = "+5493534275476";
     const equipoDescripcion = `${v_tipo} ${v_marca} ${v_modelo}`;
-    const fechaEquipoAR = new Date(
-      equipo.fecha_ingreso
-    ).toLocaleDateString("es-AR", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
+    
+    // Formateo de fecha para el mensaje
+    const fechaEquipoAR = new Date(equipo.fecha_ingreso).toLocaleDateString("es-AR", {
+      year: "numeric", month: "2-digit", day: "2-digit",
     });
 
     const payloadMs = {
       numero: numeroDestino,
       cliente,
       equipo: equipoDescripcion,
-      // Podés agregar aquí imei si después querés que Twilio lo reciba:
-      // imei: v_imei,
-      // textoPersonalizado: `Hola ${cliente.nombre} ${cliente.apellido} ...`
     };
 
     try {
-      // const twilioResponse = await axios.post(
-      //   "http://localhost:7002/twilio/enviar-mensaje",
-      //   payloadMs
-      // );
+      // Aquí iría tu axios.post si lo habilitas
+      // const twilioRes = await axios.post("...", payloadMs);
 
       return res.status(201).json({
         success: true,
-        data: { equipo, ingreso, mensaje: twilioResponse.data },
-        message:
-          "Equipo e ingreso registrados; mensaje enviado correctamente.",
+        data: { equipo, ingreso }, // Puedes agregar mensaje: twilioRes.data si lo usas
+        message: "Equipo e ingreso registrados; mensaje enviado correctamente.",
       });
     } catch (twilioErr) {
-      console.error(
-        "⚠️ Error al enviar mensaje (Twilio):",
-        twilioErr?.message || twilioErr
-      );
+      console.error("⚠️ Error al enviar mensaje (Twilio):", twilioErr?.message);
       return res.status(201).json({
         success: true,
         data: { equipo, ingreso },
-        warning:
-          "Equipo e ingreso registrados, pero no se pudo enviar el mensaje al cliente.",
+        warning: "Equipo e ingreso registrados, pero no se pudo enviar el mensaje al cliente.",
       });
     }
+
   } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {}
-    console.error("❌ Error en createEquipo (SQL txn):", err);
+    console.error("❌ Error en createEquipo:", err);
     return res.status(500).json({
       success: false,
       error: err.message || "Error al registrar equipo e ingreso",
     });
-  } finally {
-    client.release();
   }
 };
-
-
 
 
 export const getEquipos = async (req, res) => {

@@ -1,9 +1,44 @@
-// src/utils/historial/registrarHistorial.js
-// import { pool } from '../../config/db.js';
-import { pool } from '../../config/supabaseAuthModule.js';
+// // src/utils/historial/registrarHistorial.js
+// // import { pool } from '../../config/db.js';
+// import { pool } from '../../config/supabaseAuthModule.js';
+
+// /**
+//  * Registra un evento de historial de login.
+//  * @param {Object} params
+//  * @param {string} params.username - Nombre del usuario que intenta autenticarse
+//  * @param {string} params.accion - Acción realizada ('login', 'logout', etc.)
+//  * @param {string} params.estado - Estado del evento ('exitoso', 'error', etc.)
+//  * @param {string} params.mensaje - Mensaje descriptivo del evento
+//  * @returns {Promise<Object|null>} - Registro insertado o null si falla
+//  */
+// export const registrarHistorial = async ({ username, accion, estado, mensaje }) => {
+//   console.log('📌 registrarHistorial() llamado con:', { username, accion, estado, mensaje });
+
+//   try {
+//     const { rows } = await pool.query(
+//       `
+//       INSERT INTO historial_login (username, accion, estado, mensaje)
+//       VALUES ($1, $2, $3, $4)
+//       RETURNING *
+//       `,
+//       [username, accion, estado, mensaje]
+//     );
+
+//     console.log('✅ Registro insertado correctamente:', rows[0]);
+//     return rows[0];
+//   } catch (error) {
+//     console.error('❌ Error registrando historial:', error.message);
+//     return null;
+//   }
+// };
+
+// export default { registrarHistorial };
+
+
+import { supabase } from '../../config/supabase.js';
 
 /**
- * Registra un evento de historial de login.
+ * Registra un evento de historial de login en Supabase.
  * @param {Object} params
  * @param {string} params.username - Nombre del usuario que intenta autenticarse
  * @param {string} params.accion - Acción realizada ('login', 'logout', etc.)
@@ -12,26 +47,32 @@ import { pool } from '../../config/supabaseAuthModule.js';
  * @returns {Promise<Object|null>} - Registro insertado o null si falla
  */
 export const registrarHistorial = async ({ username, accion, estado, mensaje }) => {
-  console.log('📌 registrarHistorial() llamado con:', { username, accion, estado, mensaje });
+  // Opcional: Mantener el log en consola para debugging en Render
+  console.log('📌 registrarHistorial() intentando insertar:', { username, accion, estado, mensaje });
 
   try {
-    const { rows } = await pool.query(
-      `
-      INSERT INTO historial_login (username, accion, estado, mensaje)
-      VALUES ($1, $2, $3, $4)
-      RETURNING *
-      `,
-      [username, accion, estado, mensaje]
-    );
+    const { data, error } = await supabase
+      .from('historial_login')
+      .insert([
+        { 
+          username, 
+          accion, 
+          estado, 
+          mensaje,
+          fecha: new Date().toISOString() // Aseguramos el timestamp si la DB no lo genera por defecto
+        }
+      ])
+      .select()
+      .single();
 
-    console.log('✅ Registro insertado correctamente:', rows[0]);
-    return rows[0];
+    if (error) throw error;
+
+    console.log('✅ Historial registrado en Supabase:', data.id);
+    return data;
   } catch (error) {
-    console.error('❌ Error registrando historial:', error.message);
+    console.error('❌ Error registrando historial en Supabase:', error.message);
     return null;
   }
 };
 
 export default { registrarHistorial };
-
-

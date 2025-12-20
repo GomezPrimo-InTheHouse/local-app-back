@@ -1,4 +1,3 @@
-import { pool } from '../../config/supabaseAuthModule.js';
 import jwt from 'jsonwebtoken';
 const { sign, verify } = jwt;
 
