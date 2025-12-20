@@ -733,25 +733,61 @@ export const getReparacionesComunes = async (req, res) => {
 /**
  * 5️⃣ Estadísticas por Mes (RPC - Ya lo tenías casi listo)
  */
+// export const getEstadisticasPorMes = async (req, res) => {
+//   try {
+//     const { mes, anio } = req.query;
+//     if (!mes) return res.status(400).json({ error: 'Falta mes' });
+
+//     const year = anio ? Number(anio) : new Date().getFullYear();
+
+//     const { data, error } = await supabase.rpc('get_estadisticas_por_mes', {
+//       _mes: Number(mes),
+//       _anio: year
+//     });
+
+//     if (error) throw error;
+//     return res.json(data);
+//   } catch (err) {
+//     res.status(500).json({ error: 'Error obteniendo estadísticas por mes' });
+//   }
+// };
+
+
 export const getEstadisticasPorMes = async (req, res) => {
   try {
     const { mes, anio } = req.query;
-    if (!mes) return res.status(400).json({ error: 'Falta mes' });
+    if (!mes) return res.status(400).json({ error: 'Falta el parámetro mes' });
 
-    const year = anio ? Number(anio) : new Date().getFullYear();
+    const nMes = Number(mes);
+    const nAnio = anio ? Number(anio) : new Date().getFullYear();
 
-    const { data, error } = await supabase.rpc('get_estadisticas_por_mes', {
-      _mes: Number(mes),
-      _anio: year
+    // Llamamos al nuevo RPC unificado
+    const { data, error } = await supabase.rpc('get_balances_mensuales', {
+      _mes: nMes,
+      _anio: nAnio
     });
 
     if (error) throw error;
-    return res.json(data);
+
+    // Supabase rpc devuelve un array, tomamos el primer (y único) registro
+    const estadisticas = data[0] || {
+      total_ventas_bruto: 0,
+      ganancia_neta_ventas: 0,
+      total_presupuestos_bruto: 0,
+      ganancia_neta_taller: 0,
+      balance_total_general: 0
+    };
+
+    return res.json({
+      success: true,
+      data: estadisticas
+    });
+
   } catch (err) {
-    res.status(500).json({ error: 'Error obteniendo estadísticas por mes' });
+    console.error('Error en getEstadisticasPorMes:', err.message);
+    res.status(500).json({ error: 'Error obteniendo estadísticas financieras' });
   }
 };
-
 /**
  * 💰 VENTAS: getResumenVentasPorMes (Lógica de mapeo de productos)
  */
