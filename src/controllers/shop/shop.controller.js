@@ -1275,6 +1275,7 @@ export const getVentaShopById = async (req, res) => {
     if (!ventaRow) return res.status(404).json({ error: "Venta no encontrada" });
 
     // 2) Traer detalles + nombre e IMAGEN del producto
+// 2) Traer detalles + nombre e IMAGEN del producto
     const { data: detallesRows, error: detErr } = await supabase
       .from("detalle_venta")
       .select(`
@@ -1287,9 +1288,9 @@ export const getVentaShopById = async (req, res) => {
         producto:producto_id (
           id,
           nombre,
-          imagen_url  // 👈 AGREGADO: Asegúrate que en tu DB se llame así
+          foto_url
         )
-      `)
+      `) 
       .eq("venta_id", ventaId)
       .order("id", { ascending: true });
 
@@ -1301,7 +1302,7 @@ export const getVentaShopById = async (req, res) => {
       return {
         producto_id: d.producto_id,
         producto_nombre: prod?.nombre ?? null,
-        imagen_url: prod?.imagen_url ?? null, // 👈 AGREGADO: Ahora el front recibe la URL
+        imagen_url: prod?.foto_url ?? null, // 👈 AGREGADO: Ahora el front recibe la URL
         cantidad: d.cantidad,
         precio_unitario: Number(d.precio_unitario ?? 0),
         subtotal: Number(d.subtotal ?? 0),
