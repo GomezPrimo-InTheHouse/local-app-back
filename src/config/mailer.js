@@ -48,6 +48,7 @@ export default async function mailer({
 
       <h3>Datos de la venta</h3>
       <p><b>ID:</b> ${venta?.id}</p>
+      
       <p><b>Fecha:</b> ${venta?.fecha}</p>
       <p><b>Canal:</b> ${venta?.canal}</p>
       <p><b>Monto abonado:</b> $${venta?.monto_abonado}</p>

@@ -5,18 +5,113 @@ import { updateProducto } from "./producto/producto.controller.js";
 
 
 // ✅ Crear una nueva venta el que utilizo 21/12
-export const createVenta = async (req, res) => {
-  const { cliente_id, detalle_venta, monto_abonado } = req.body;
+// export const createVenta = async (req, res) => {
+//   const { cliente_id, detalle_venta, monto_abonado } = req.body;
 
-  console.log('createVenta body:', req.body);
+//   console.log('createVenta body:', req.body);
+//   try {
+//     // 1️⃣ Calcular total y saldo
+//     let totalVenta = 0;
+//     for (const detalle of detalle_venta) {
+//       const { cantidad, precio_unitario } = detalle;
+//       totalVenta += Number(cantidad) * Number(precio_unitario);
+//     }
+//     const saldoVenta = totalVenta - (Number(monto_abonado) || 0);
+
+//     // 2️⃣ Insertar venta principal
+//     const { data: venta, error: ventaError } = await supabase
+//       .from("venta")
+//       .insert([
+//         {
+//           fecha: new Date(),
+//           total: totalVenta,
+//           monto_abonado: Number(monto_abonado) || 0,
+//           saldo: saldoVenta,
+//           cliente_id,
+//         },
+//       ])
+//       .select()
+//       .single();
+
+//     if (ventaError) throw ventaError;
+
+//     // 3️⃣ Insertar detalles de la venta
+//     const detallesInsert = detalle_venta.map((d) => ({
+//       venta_id: venta.id,
+//       producto_id: d.producto_id,
+//       cantidad: d.cantidad,
+//       precio_unitario: d.precio_unitario,
+//       subtotal: Number(d.cantidad) * Number(d.precio_unitario),
+//     }));
+
+//     const { error: detalleError } = await supabase
+//       .from("detalle_venta")
+//       .insert(detallesInsert);
+
+//     if (detalleError) throw detalleError;
+
+//     res.status(201).json({ success: true, data: venta });
+//   } catch (error) {
+//     console.error("Error en createVenta:", error.message);
+//     res.status(500).json({ success: false, error: "Error al crear la venta" });
+//   }
+// };
+export const createVenta = async (req, res) => {
+  const { cliente_id, monto_abonado } = req.body;
+
+  // Aceptamos ambos nombres para compatibilidad
+  const detalle_venta = Array.isArray(req.body.detalle_venta)
+    ? req.body.detalle_venta
+    : Array.isArray(req.body.detalles)
+      ? req.body.detalles
+      : [];
+
+  console.log("createVenta body:", req.body);
+
   try {
-    // 1️⃣ Calcular total y saldo
-    let totalVenta = 0;
-    for (const detalle of detalle_venta) {
-      const { cantidad, precio_unitario } = detalle;
-      totalVenta += Number(cantidad) * Number(precio_unitario);
+    // ✅ Validaciones mínimas
+    const clienteIdNum = Number(cliente_id);
+    if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0) {
+      return res.status(400).json({ success: false, error: "cliente_id inválido" });
     }
-    const saldoVenta = totalVenta - (Number(monto_abonado) || 0);
+
+    if (!Array.isArray(detalle_venta) || detalle_venta.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "detalle_venta/detalles debe ser un array con al menos un item",
+      });
+    }
+
+    const montoAbonadoNum = Number(monto_abonado) || 0;
+    if (montoAbonadoNum < 0) {
+      return res.status(400).json({ success: false, error: "monto_abonado inválido" });
+    }
+
+    // 1️⃣ Normalizar + calcular total y saldo
+    let totalVenta = 0;
+
+    const detallesNorm = detalle_venta.map((d, idx) => {
+      const producto_id = Number(d.producto_id);
+      const cantidad = Number(d.cantidad);
+      const precio_unitario = Number(d.precio_unitario);
+
+      if (!Number.isFinite(producto_id) || producto_id <= 0) {
+        throw new Error(`detalle[${idx}].producto_id inválido`);
+      }
+      if (!Number.isFinite(cantidad) || cantidad <= 0) {
+        throw new Error(`detalle[${idx}].cantidad inválida`);
+      }
+      if (!Number.isFinite(precio_unitario) || precio_unitario < 0) {
+        throw new Error(`detalle[${idx}].precio_unitario inválido`);
+      }
+
+      const subtotal = cantidad * precio_unitario;
+      totalVenta += subtotal;
+
+      return { producto_id, cantidad, precio_unitario, subtotal };
+    });
+
+    const saldoVenta = totalVenta - montoAbonadoNum;
 
     // 2️⃣ Insertar venta principal
     const { data: venta, error: ventaError } = await supabase
@@ -25,9 +120,9 @@ export const createVenta = async (req, res) => {
         {
           fecha: new Date(),
           total: totalVenta,
-          monto_abonado: Number(monto_abonado) || 0,
+          monto_abonado: montoAbonadoNum,
           saldo: saldoVenta,
-          cliente_id,
+          cliente_id: clienteIdNum,
         },
       ])
       .select()
@@ -35,25 +130,38 @@ export const createVenta = async (req, res) => {
 
     if (ventaError) throw ventaError;
 
-    // 3️⃣ Insertar detalles de la venta
-    const detallesInsert = detalle_venta.map((d) => ({
+    // 3️⃣ Insertar detalles
+    const detallesInsert = detallesNorm.map((d) => ({
       venta_id: venta.id,
       producto_id: d.producto_id,
       cantidad: d.cantidad,
       precio_unitario: d.precio_unitario,
-      subtotal: Number(d.cantidad) * Number(d.precio_unitario),
+      subtotal: d.subtotal,
     }));
 
-    const { error: detalleError } = await supabase
+    const { data: detallesCreados, error: detalleError } = await supabase
       .from("detalle_venta")
-      .insert(detallesInsert);
+      .insert(detallesInsert)
+      .select();
 
     if (detalleError) throw detalleError;
 
-    res.status(201).json({ success: true, data: venta });
+    return res.status(201).json({
+      success: true,
+      data: {
+        venta,
+        detalles: detallesCreados,
+      },
+    });
   } catch (error) {
-    console.error("Error en createVenta:", error.message);
-    res.status(500).json({ success: false, error: "Error al crear la venta" });
+    console.error("Error en createVenta:", error.message || error);
+    // Si el error viene de validación (throw new Error), devolvemos 400
+    const msg = String(error?.message || "");
+    const isValidation = msg.startsWith("detalle[") || msg.includes("inválido") || msg.includes("debe ser un array");
+    return res.status(isValidation ? 400 : 500).json({
+      success: false,
+      error: isValidation ? msg : "Error al crear la venta",
+    });
   }
 };
 
