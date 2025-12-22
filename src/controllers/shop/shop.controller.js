@@ -1,6 +1,6 @@
 import { supabase } from "../../config/supabase.js";
 import mailer from "../../config/mailer.js";
-
+import { getClienteById } from "../cliente.controller.js";
 // =========================================================
 // CONSTANTES: Tipos/Descripción de cupones (evitar typos)
 // =========================================================
@@ -605,89 +605,120 @@ const mapDbError = (err) => {
 // POST /shop/ventas
 // =========================================================
 export const crearVentaWeb = async (req, res) => {
-    try {
-        const {
-            cliente_id,
-            items,
-            monto_abonado = 0,
-            estado_nombre = "PENDIENTE_PAGO",
-            codigo_cupon = null,
-        } = req.body;
+  try {
+    const {
+      cliente_id,
+      items,
+      monto_abonado = 0,
+      estado_nombre = "PENDIENTE_PAGO",
+      codigo_cupon = null,
+    } = req.body;
 
-        // Validaciones mínimas de request
-        const clienteIdNum = Number(cliente_id);
-        if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0) {
-            return res.status(400).json({ error: "cliente_id es requerido y debe ser numérico" });
-        }
-
-        const itemsNorm = normalizeItems(items);
-        if (!itemsNorm.length) {
-            return res.status(400).json({
-                error: "items debe ser un array con al menos un producto (producto_id, cantidad > 0)",
-            });
-        }
-
-        const montoAbonadoNum = parseNullableNumber(monto_abonado) ?? 0;
-        if (!Number.isFinite(montoAbonadoNum) || montoAbonadoNum < 0) {
-            return res.status(400).json({ error: "monto_abonado inválido" });
-        }
-
-        const estadoNombreFinal =
-            typeof estado_nombre === "string" && estado_nombre.trim()
-                ? estado_nombre.trim().toUpperCase()
-                : "PENDIENTE_PAGO";
-
-        const codigoCuponFinal =
-            typeof codigo_cupon === "string" && codigo_cupon.trim() ? codigo_cupon.trim() : null;
-
-        // ✅ Llamada transaccional a RPC
-        const { data, error } = await supabase.rpc("crear_venta_web", {
-            _cliente_id: clienteIdNum,
-            _items: itemsNorm,
-            _monto_abonado: montoAbonadoNum,
-            _estado_nombre: estadoNombreFinal,
-            _codigo_cupon: codigoCuponFinal,
-        });
-
-        if (error) {
-            console.error("Error RPC crear_venta_web:", error);
-            const mapped = mapDbError(error);
-            return res.status(mapped.status).json(mapped);
-        }
-
-        try {
-            const result = await mailer({
-                venta_id: data?.venta_id,
-                total_final: data?.total_final,
-                cliente_id: clienteIdNum,
-                cantidad_items: itemsNorm.length,
-            });
-
-            console.log("✅ Resend result:", result);
-
-            // 🔥 Si viene error dentro del result, lo tratamos como fallo real
-            if (result?.error) {
-                console.error("❌ Resend error:", result.error);
-            } else {
-                console.log("✅ Email enviado. ID:", result?.data?.id);
-            }
-        } catch (mailErr) {
-            console.error("⚠️ Venta creada pero falló envío de email:", mailErr?.message || mailErr);
-        }
-
-
-        return res.status(201).json({
-            message: "Venta web creada correctamente",
-            ...data,
-        });
-    } catch (err) {
-        console.error("Error en crearVentaWeb controller:", err);
-        return res.status(500).json({
-            error: "Error interno al crear venta web",
-            detail: err?.message || String(err),
-        });
+    // Validaciones mínimas de request
+    const clienteIdNum = Number(cliente_id);
+    if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0) {
+      return res
+        .status(400)
+        .json({ error: "cliente_id es requerido y debe ser numérico" });
     }
+
+    const itemsNorm = normalizeItems(items);
+    if (!itemsNorm.length) {
+      return res.status(400).json({
+        error:
+          "items debe ser un array con al menos un producto (producto_id, cantidad > 0)",
+      });
+    }
+
+    const montoAbonadoNum = parseNullableNumber(monto_abonado) ?? 0;
+    if (!Number.isFinite(montoAbonadoNum) || montoAbonadoNum < 0) {
+      return res.status(400).json({ error: "monto_abonado inválido" });
+    }
+
+    const estadoNombreFinal =
+      typeof estado_nombre === "string" && estado_nombre.trim()
+        ? estado_nombre.trim().toUpperCase()
+        : "PENDIENTE_PAGO";
+
+    const codigoCuponFinal =
+      typeof codigo_cupon === "string" && codigo_cupon.trim()
+        ? codigo_cupon.trim()
+        : null;
+
+    // ✅ Llamada transaccional a RPC
+    const { data, error } = await supabase.rpc("crear_venta_web", {
+      _cliente_id: clienteIdNum,
+      _items: itemsNorm,
+      _monto_abonado: montoAbonadoNum,
+      _estado_nombre: estadoNombreFinal,
+      _codigo_cupon: codigoCuponFinal,
+    });
+
+    if (error) {
+      console.error("Error RPC crear_venta_web:", error);
+      const mapped = mapDbError(error);
+      return res.status(mapped.status).json(mapped);
+    }
+
+    // ✅ Intentar enviar mail (no debe romper la venta si falla)
+    try {
+      const ventaId = data?.venta?.id ?? null;
+
+      // ✅ Traer cliente real (NO usar controllers dentro de controllers)
+      const { data: clienteRow, error: clienteErr } = await supabase
+        .from("cliente")
+        .select("id,nombre,apellido,dni,email,celular,direccion")
+        .eq("id", clienteIdNum)
+        .maybeSingle();
+
+      if (clienteErr) {
+        console.error("⚠️ No se pudo obtener cliente para email:", clienteErr);
+      }
+
+      const result = await mailer({
+        venta: data?.venta ?? null,          // ✅ venta completa
+        detalles: data?.detalles ?? [],      // ✅ detalles completos
+        resumen: {                           // ✅ totales y cupón
+          total_bruto: data?.total_bruto ?? 0,
+          descuento: data?.descuento ?? 0,
+          total_final: data?.total_final ?? 0,
+          codigo_cupon: data?.codigo_cupon ?? null,
+        },
+        cliente: clienteRow ?? null,         // ✅ cliente real
+        meta: {                              // ✅ extras útiles
+          venta_id: ventaId,
+          cantidad_items: itemsNorm.length,
+          canal: data?.venta?.canal ?? "web_shop",
+        },
+      });
+
+      console.log("✅ Resend result:", result);
+
+      if (result?.error) {
+        console.error("❌ Resend error:", result.error);
+      } else {
+        console.log("✅ Email enviado. ID:", result?.data?.id, "venta_id:", ventaId);
+      }
+    } catch (mailErr) {
+      console.error(
+        "⚠️ Venta creada pero falló envío de email:",
+        mailErr?.message || mailErr
+      );
+    }
+
+    return res.status(201).json({
+      message: "Venta web creada correctamente",
+      ...data,
+    });
+  } catch (err) {
+    console.error("Error en crearVentaWeb controller:", err);
+    return res.status(500).json({
+      error: "Error interno al crear venta web",
+      detail: err?.message || String(err),
+    });
+  }
 };
+
 
 
 //fin crear venta web
