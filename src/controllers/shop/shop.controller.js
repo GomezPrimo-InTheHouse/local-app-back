@@ -643,7 +643,7 @@ export const crearVentaWeb = async (req, res) => {
     // ✅ Llamada transaccional a RPC
     const { data, error } = await supabase.rpc("crear_venta_web", {
       _cliente_id: clienteIdNum,
-      _items: itemsNorm, // jsonb array
+      _items: itemsNorm,
       _monto_abonado: montoAbonadoNum,
       _estado_nombre: estadoNombreFinal,
       _codigo_cupon: codigoCuponFinal,
@@ -655,29 +655,27 @@ export const crearVentaWeb = async (req, res) => {
       return res.status(mapped.status).json(mapped);
     }
 
-    /**
-     * data esperado de la RPC:
-     * {
-     *   venta_id,
-     *   total_bruto,
-     *   descuento,
-     *   total_final,
-     *   requiere_senia,
-     *   senia_minima,
-     *   tipo_entrega_venta
-     * }
-     */
-
-    // 🔎 (Opcional) Si querés devolver venta + detalles completos:
-    // Para no romper performance, lo dejo como opcional por flag.
-    // const { data: ventaRow } = await supabase.from("venta").select("*").eq("id", data.venta_id).single();
-    // const { data: detallesRow } = await supabase.from("detalle_venta").select("*").eq("venta_id", data.venta_id);
+    // ✅ Intentar enviar mail (no debe romper la venta si falla)
+    try {
+      await mailer({
+        venta_id: data?.venta_id,
+        total_bruto: data?.total_bruto,
+        descuento: data?.descuento,
+        total_final: data?.total_final,
+        requiere_senia: data?.requiere_senia,
+        senia_minima: data?.senia_minima,
+        tipo_entrega_venta: data?.tipo_entrega_venta,
+        cliente_id: clienteIdNum,
+        cantidad_items: itemsNorm.length,
+      });
+    } catch (mailErr) {
+      console.error("⚠️ Venta creada pero falló envío de email:", mailErr?.message || mailErr);
+      // No hacemos return error acá: la venta ya está OK.
+    }
 
     return res.status(201).json({
       message: "Venta web creada correctamente",
       ...data,
-      // venta: ventaRow ?? null,
-      // detalles: detallesRow ?? null,
     });
   } catch (err) {
     console.error("Error en crearVentaWeb controller:", err);
@@ -687,6 +685,7 @@ export const crearVentaWeb = async (req, res) => {
     });
   }
 };
+
 
 //fin crear venta web
 

@@ -2,140 +2,58 @@
 
 import { supabase } from "../config/supabase.js";
 import { updateProducto } from "./producto/producto.controller.js";
-import { pool } from '../config/supabaseAuthModule.js'; //sirve para hacer queries SQL crudas si es necesario
-import { mailer } from "../config/mailer.js";
+
 
 // ✅ Crear una nueva venta el que utilizo 21/12
-// export const createVenta = async (req, res) => {
-//   const { cliente_id, detalle_venta, monto_abonado } = req.body;
-
-//   console.log('createVenta body:', req.body);
-//   try {
-//     // 1️⃣ Calcular total y saldo
-//     let totalVenta = 0;
-//     for (const detalle of detalle_venta) {
-//       const { cantidad, precio_unitario } = detalle;
-//       totalVenta += Number(cantidad) * Number(precio_unitario);
-//     }
-//     const saldoVenta = totalVenta - (Number(monto_abonado) || 0);
-
-//     // 2️⃣ Insertar venta principal
-//     const { data: venta, error: ventaError } = await supabase
-//       .from("venta")
-//       .insert([
-//         {
-//           fecha: new Date(),
-//           total: totalVenta,
-//           monto_abonado: Number(monto_abonado) || 0,
-//           saldo: saldoVenta,
-//           cliente_id,
-//         },
-//       ])
-//       .select()
-//       .single();
-
-//     if (ventaError) throw ventaError;
-
-//     // 3️⃣ Insertar detalles de la venta
-//     const detallesInsert = detalle_venta.map((d) => ({
-//       venta_id: venta.id,
-//       producto_id: d.producto_id,
-//       cantidad: d.cantidad,
-//       precio_unitario: d.precio_unitario,
-//       subtotal: Number(d.cantidad) * Number(d.precio_unitario),
-//     }));
-
-//     const { error: detalleError } = await supabase
-//       .from("detalle_venta")
-//       .insert(detallesInsert);
-
-//     if (detalleError) throw detalleError;
-
-//     res.status(201).json({ success: true, data: venta });
-//   } catch (error) {
-//     console.error("Error en createVenta:", error.message);
-//     res.status(500).json({ success: false, error: "Error al crear la venta" });
-//   }
-// };
 export const createVenta = async (req, res) => {
+  const { cliente_id, detalle_venta, monto_abonado } = req.body;
+
+  console.log('createVenta body:', req.body);
   try {
-    const {
-      cliente_id,
-      items,
-      monto_abonado = 0,
-      estado_nombre = "PENDIENTE_PAGO",
-      codigo_cupon = null,
-    } = req.body;
-
-    // Validaciones mínimas de request
-    const clienteIdNum = Number(cliente_id);
-    if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0) {
-      return res.status(400).json({ error: "cliente_id es requerido y debe ser numérico" });
+    // 1️⃣ Calcular total y saldo
+    let totalVenta = 0;
+    for (const detalle of detalle_venta) {
+      const { cantidad, precio_unitario } = detalle;
+      totalVenta += Number(cantidad) * Number(precio_unitario);
     }
+    const saldoVenta = totalVenta - (Number(monto_abonado) || 0);
 
-    const itemsNorm = normalizeItems(items);
-    if (!itemsNorm.length) {
-      return res.status(400).json({
-        error: "items debe ser un array con al menos un producto (producto_id, cantidad > 0)",
-      });
-    }
+    // 2️⃣ Insertar venta principal
+    const { data: venta, error: ventaError } = await supabase
+      .from("venta")
+      .insert([
+        {
+          fecha: new Date(),
+          total: totalVenta,
+          monto_abonado: Number(monto_abonado) || 0,
+          saldo: saldoVenta,
+          cliente_id,
+        },
+      ])
+      .select()
+      .single();
 
-    const montoAbonadoNum = parseNullableNumber(monto_abonado) ?? 0;
-    if (!Number.isFinite(montoAbonadoNum) || montoAbonadoNum < 0) {
-      return res.status(400).json({ error: "monto_abonado inválido" });
-    }
+    if (ventaError) throw ventaError;
 
-    const estadoNombreFinal =
-      typeof estado_nombre === "string" && estado_nombre.trim()
-        ? estado_nombre.trim().toUpperCase()
-        : "PENDIENTE_PAGO";
+    // 3️⃣ Insertar detalles de la venta
+    const detallesInsert = detalle_venta.map((d) => ({
+      venta_id: venta.id,
+      producto_id: d.producto_id,
+      cantidad: d.cantidad,
+      precio_unitario: d.precio_unitario,
+      subtotal: Number(d.cantidad) * Number(d.precio_unitario),
+    }));
 
-    const codigoCuponFinal =
-      typeof codigo_cupon === "string" && codigo_cupon.trim() ? codigo_cupon.trim() : null;
+    const { error: detalleError } = await supabase
+      .from("detalle_venta")
+      .insert(detallesInsert);
 
-    // ✅ Llamada transaccional a RPC
-    const { data, error } = await supabase.rpc("crear_venta_web", {
-      _cliente_id: clienteIdNum,
-      _items: itemsNorm,
-      _monto_abonado: montoAbonadoNum,
-      _estado_nombre: estadoNombreFinal,
-      _codigo_cupon: codigoCuponFinal,
-    });
+    if (detalleError) throw detalleError;
 
-    if (error) {
-      console.error("Error RPC crear_venta_web:", error);
-      const mapped = mapDbError(error);
-      return res.status(mapped.status).json(mapped);
-    }
-
-    // ✅ Intentar enviar mail (no debe romper la venta si falla)
-    try {
-      await mailer({
-        venta_id: data?.venta_id,
-        total_bruto: data?.total_bruto,
-        descuento: data?.descuento,
-        total_final: data?.total_final,
-        requiere_senia: data?.requiere_senia,
-        senia_minima: data?.senia_minima,
-        tipo_entrega_venta: data?.tipo_entrega_venta,
-        cliente_id: clienteIdNum,
-        cantidad_items: itemsNorm.length,
-      });
-    } catch (mailErr) {
-      console.error("⚠️ Venta creada pero falló envío de email:", mailErr?.message || mailErr);
-      // No hacemos return error acá: la venta ya está OK.
-    }
-
-    return res.status(201).json({
-      message: "Venta web creada correctamente",
-      ...data,
-    });
-  } catch (err) {
-    console.error("Error en crearVentaWeb controller:", err);
-    return res.status(500).json({
-      error: "Error interno al crear venta web",
-      detail: err?.message || String(err),
-    });
+    res.status(201).json({ success: true, data: venta });
+  } catch (error) {
+    console.error("Error en createVenta:", error.message);
+    res.status(500).json({ success: false, error: "Error al crear la venta" });
   }
 };
 
