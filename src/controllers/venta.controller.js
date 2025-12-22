@@ -3,9 +3,9 @@
 import { supabase } from "../config/supabase.js";
 import { updateProducto } from "./producto/producto.controller.js";
 import { pool } from '../config/supabaseAuthModule.js'; //sirve para hacer queries SQL crudas si es necesario
+import { mailer } from "../config/mailer.js";
 
-
-// ✅ Crear una nueva venta
+// ✅ Crear una nueva venta el que utilizo 21/12
 // export const createVenta = async (req, res) => {
 //   const { cliente_id, detalle_venta, monto_abonado } = req.body;
 
@@ -57,51 +57,85 @@ import { pool } from '../config/supabaseAuthModule.js'; //sirve para hacer queri
 //     res.status(500).json({ success: false, error: "Error al crear la venta" });
 //   }
 // };
-export const createVenta = async (req, res) => {
+export const crearVentaWeb = async (req, res) => {
   try {
-    console.log("createVenta body:", req.body);
-    const { cliente_id, detalles = [], monto_abonado = 0, fecha, saldo, total } = req.body;
+    const {
+      cliente_id,
+      items,
+      monto_abonado = 0,
+      estado_nombre = "PENDIENTE_PAGO",
+      codigo_cupon = null,
+    } = req.body;
 
-    // 1️⃣ Validar cliente si viene
-    if (cliente_id != null) {
-      const { data: cliente, error: clienteErr } = await supabase
-        .from("cliente")
-        .select("id")
-        .eq("id", cliente_id)
-        .maybeSingle();
-
-      if (clienteErr && clienteErr.code !== "PGRST116") {
-        console.error("Error comprobando cliente:", clienteErr);
-        return res.status(500).json({ success: false, error: clienteErr.message });
-      }
-
-      if (!cliente) {
-        return res.status(400).json({ success: false, error: "Cliente no existe" });
-      }
+    // Validaciones mínimas de request
+    const clienteIdNum = Number(cliente_id);
+    if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0) {
+      return res.status(400).json({ error: "cliente_id es requerido y debe ser numérico" });
     }
 
-    // 2️⃣ Llamar al RPC que hace todo atómicamente
-    const { data, error } = await supabase.rpc("create_venta_rpc", {
-      p_cliente_id: cliente_id,
-      p_detalles: detalles,
-      p_monto_abonado: monto_abonado ?? 0
+    const itemsNorm = normalizeItems(items);
+    if (!itemsNorm.length) {
+      return res.status(400).json({
+        error: "items debe ser un array con al menos un producto (producto_id, cantidad > 0)",
+      });
+    }
+
+    const montoAbonadoNum = parseNullableNumber(monto_abonado) ?? 0;
+    if (!Number.isFinite(montoAbonadoNum) || montoAbonadoNum < 0) {
+      return res.status(400).json({ error: "monto_abonado inválido" });
+    }
+
+    const estadoNombreFinal =
+      typeof estado_nombre === "string" && estado_nombre.trim()
+        ? estado_nombre.trim().toUpperCase()
+        : "PENDIENTE_PAGO";
+
+    const codigoCuponFinal =
+      typeof codigo_cupon === "string" && codigo_cupon.trim() ? codigo_cupon.trim() : null;
+
+    // ✅ Llamada transaccional a RPC
+    const { data, error } = await supabase.rpc("crear_venta_web", {
+      _cliente_id: clienteIdNum,
+      _items: itemsNorm,
+      _monto_abonado: montoAbonadoNum,
+      _estado_nombre: estadoNombreFinal,
+      _codigo_cupon: codigoCuponFinal,
     });
 
-
-
     if (error) {
-      console.error("Error en create_venta_rpc:", error);
-      return res.status(500).json({ success: false, error: error.message });
+      console.error("Error RPC crear_venta_web:", error);
+      const mapped = mapDbError(error);
+      return res.status(mapped.status).json(mapped);
+    }
+
+    // ✅ Intentar enviar mail (no debe romper la venta si falla)
+    try {
+      await mailer({
+        venta_id: data?.venta_id,
+        total_bruto: data?.total_bruto,
+        descuento: data?.descuento,
+        total_final: data?.total_final,
+        requiere_senia: data?.requiere_senia,
+        senia_minima: data?.senia_minima,
+        tipo_entrega_venta: data?.tipo_entrega_venta,
+        cliente_id: clienteIdNum,
+        cantidad_items: itemsNorm.length,
+      });
+    } catch (mailErr) {
+      console.error("⚠️ Venta creada pero falló envío de email:", mailErr?.message || mailErr);
+      // No hacemos return error acá: la venta ya está OK.
     }
 
     return res.status(201).json({
-      success: true,
-      message: "Venta creada correctamente",
-      data
+      message: "Venta web creada correctamente",
+      ...data,
     });
   } catch (err) {
-    console.error("Error en createVenta:", err);
-    return res.status(500).json({ success: false, error: "Error al crear venta" });
+    console.error("Error en crearVentaWeb controller:", err);
+    return res.status(500).json({
+      error: "Error interno al crear venta web",
+      detail: err?.message || String(err),
+    });
   }
 };
 
