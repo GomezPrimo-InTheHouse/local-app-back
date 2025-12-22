@@ -1,5 +1,5 @@
 import { supabase } from "../../config/supabase.js";
-import resend from "../../config/mailer.js";
+import mailer from "../../config/mailer.js";
 
 // =========================================================
 // CONSTANTES: Tipos/Descripción de cupones (evitar typos)
