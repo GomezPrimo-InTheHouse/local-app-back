@@ -26,3 +26,4 @@ export const mailer = async ({
     `,
   });
 };
+export default mailer;

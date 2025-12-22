@@ -57,7 +57,7 @@ import { mailer } from "../config/mailer.js";
 //     res.status(500).json({ success: false, error: "Error al crear la venta" });
 //   }
 // };
-export const crearVentaWeb = async (req, res) => {
+export const createVenta = async (req, res) => {
   try {
     const {
       cliente_id,
@@ -287,6 +287,7 @@ export const crearVentaWeb = async (req, res) => {
 //       .json({ success: false, error: "Error al obtener ventas" });
 //   }
 // };
+
 
 
 const formatVentaDate = (dateString) => {
