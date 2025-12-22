@@ -112,7 +112,7 @@ export const createVenta = async (req, res) => {
     });
 
     const saldoVenta = totalVenta - montoAbonadoNum;
-
+    const estadoId = saldoVenta <= 0 ? 19 : 26; // 19 = activa, 26 = Pendiente de Pago
     // 2️⃣ Insertar venta principal
     const { data: venta, error: ventaError } = await supabase
       .from("venta")
@@ -121,6 +121,7 @@ export const createVenta = async (req, res) => {
           fecha: new Date(),
           total: totalVenta,
           monto_abonado: montoAbonadoNum,
+          estado_id: estadoId,
           saldo: saldoVenta,
           cliente_id: clienteIdNum,
         },
