@@ -362,7 +362,7 @@ export const loginCliente = async (req, res) => {
             cliente: clienteFinal, // SIEMPRE con id
             canal_cliente: canalAlta,
             cupon_activo: cuponResult.cupon || null,
-            
+
 
             // Flags (si el helper no trae blocked, lo dejamos en false)
             cupon_creado: !!cuponResult.created,
@@ -540,150 +540,153 @@ export const validarCupon = async (req, res) => {
 
 
 const normalizeItems = (items) => {
-  if (!Array.isArray(items)) return [];
+    if (!Array.isArray(items)) return [];
 
-  // Normalizamos y validamos shape mínimo
-  const norm = items
-    .map((it) => ({
-      producto_id: Number(it?.producto_id),
-      cantidad: Number(it?.cantidad),
-    }))
-    .filter(
-      (it) =>
-        Number.isFinite(it.producto_id) &&
-        it.producto_id > 0 &&
-        Number.isFinite(it.cantidad) &&
-        it.cantidad > 0
-    )
-    // Evitar duplicados: sumamos cantidades por producto_id
-    .reduce((acc, it) => {
-      const found = acc.find((x) => x.producto_id === it.producto_id);
-      if (found) found.cantidad += it.cantidad;
-      else acc.push(it);
-      return acc;
-    }, []);
+    // Normalizamos y validamos shape mínimo
+    const norm = items
+        .map((it) => ({
+            producto_id: Number(it?.producto_id),
+            cantidad: Number(it?.cantidad),
+        }))
+        .filter(
+            (it) =>
+                Number.isFinite(it.producto_id) &&
+                it.producto_id > 0 &&
+                Number.isFinite(it.cantidad) &&
+                it.cantidad > 0
+        )
+        // Evitar duplicados: sumamos cantidades por producto_id
+        .reduce((acc, it) => {
+            const found = acc.find((x) => x.producto_id === it.producto_id);
+            if (found) found.cantidad += it.cantidad;
+            else acc.push(it);
+            return acc;
+        }, []);
 
-  return norm;
+    return norm;
 };
 
 const parseNullableNumber = (val) => {
-  if (val === undefined || val === null || val === "") return null;
-  const n = Number(val);
-  return Number.isFinite(n) ? n : null;
+    if (val === undefined || val === null || val === "") return null;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
 };
 
 // Convierte errores comunes de Supabase/Postgres a mensajes útiles
 const mapDbError = (err) => {
-  const message = err?.message || "Error desconocido";
-  const code = err?.code || err?.details?.code;
+    const message = err?.message || "Error desconocido";
+    const code = err?.code || err?.details?.code;
 
-  // Errores lanzados por RAISE EXCEPTION en la RPC suelen venir como message directo
-  // Ej: "Seña insuficiente. Mínimo requerido: 12345"
-  if (message.toLowerCase().includes("seña insuficiente")) {
-    return { status: 400, error: message };
-  }
-  if (message.toLowerCase().includes("cupón inválido")) {
-    return { status: 400, error: message };
-  }
-  if (message.toLowerCase().includes("producto") && message.toLowerCase().includes("no disponible")) {
-    return { status: 400, error: message };
-  }
-  if (message.toLowerCase().includes("items vacío")) {
-    return { status: 400, error: message };
-  }
-  if (message.toLowerCase().includes("estado de venta inválido")) {
-    return { status: 500, error: "Configuración inválida: estado de venta no existe" };
-  }
+    // Errores lanzados por RAISE EXCEPTION en la RPC suelen venir como message directo
+    // Ej: "Seña insuficiente. Mínimo requerido: 12345"
+    if (message.toLowerCase().includes("seña insuficiente")) {
+        return { status: 400, error: message };
+    }
+    if (message.toLowerCase().includes("cupón inválido")) {
+        return { status: 400, error: message };
+    }
+    if (message.toLowerCase().includes("producto") && message.toLowerCase().includes("no disponible")) {
+        return { status: 400, error: message };
+    }
+    if (message.toLowerCase().includes("items vacío")) {
+        return { status: 400, error: message };
+    }
+    if (message.toLowerCase().includes("estado de venta inválido")) {
+        return { status: 500, error: "Configuración inválida: estado de venta no existe" };
+    }
 
-  // Código PostgreSQL genérico: 22P02 invalid_text_representation, etc.
-  if (code === "22P02") return { status: 400, error: "Datos inválidos en la solicitud" };
+    // Código PostgreSQL genérico: 22P02 invalid_text_representation, etc.
+    if (code === "22P02") return { status: 400, error: "Datos inválidos en la solicitud" };
 
-  return { status: 500, error: "Error interno al crear venta web", detail: message };
+    return { status: 500, error: "Error interno al crear venta web", detail: message };
 };
 
 // =========================================================
 // POST /shop/ventas
 // =========================================================
 export const crearVentaWeb = async (req, res) => {
-  try {
-    const {
-      cliente_id,
-      items,
-      monto_abonado = 0,
-      estado_nombre = "PENDIENTE_PAGO",
-      codigo_cupon = null,
-    } = req.body;
-
-    // Validaciones mínimas de request
-    const clienteIdNum = Number(cliente_id);
-    if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0) {
-      return res.status(400).json({ error: "cliente_id es requerido y debe ser numérico" });
-    }
-
-    const itemsNorm = normalizeItems(items);
-    if (!itemsNorm.length) {
-      return res.status(400).json({
-        error: "items debe ser un array con al menos un producto (producto_id, cantidad > 0)",
-      });
-    }
-
-    const montoAbonadoNum = parseNullableNumber(monto_abonado) ?? 0;
-    if (!Number.isFinite(montoAbonadoNum) || montoAbonadoNum < 0) {
-      return res.status(400).json({ error: "monto_abonado inválido" });
-    }
-
-    const estadoNombreFinal =
-      typeof estado_nombre === "string" && estado_nombre.trim()
-        ? estado_nombre.trim().toUpperCase()
-        : "PENDIENTE_PAGO";
-
-    const codigoCuponFinal =
-      typeof codigo_cupon === "string" && codigo_cupon.trim() ? codigo_cupon.trim() : null;
-
-    // ✅ Llamada transaccional a RPC
-    const { data, error } = await supabase.rpc("crear_venta_web", {
-      _cliente_id: clienteIdNum,
-      _items: itemsNorm,
-      _monto_abonado: montoAbonadoNum,
-      _estado_nombre: estadoNombreFinal,
-      _codigo_cupon: codigoCuponFinal,
-    });
-
-    if (error) {
-      console.error("Error RPC crear_venta_web:", error);
-      const mapped = mapDbError(error);
-      return res.status(mapped.status).json(mapped);
-    }
-
-    // ✅ Intentar enviar mail (no debe romper la venta si falla)
     try {
-      await mailer({
-        venta_id: data?.venta_id,
-        total_bruto: data?.total_bruto,
-        descuento: data?.descuento,
-        total_final: data?.total_final,
-        requiere_senia: data?.requiere_senia,
-        senia_minima: data?.senia_minima,
-        tipo_entrega_venta: data?.tipo_entrega_venta,
-        cliente_id: clienteIdNum,
-        cantidad_items: itemsNorm.length,
-      });
-    } catch (mailErr) {
-      console.error("⚠️ Venta creada pero falló envío de email:", mailErr?.message || mailErr);
-      // No hacemos return error acá: la venta ya está OK.
-    }
+        const {
+            cliente_id,
+            items,
+            monto_abonado = 0,
+            estado_nombre = "PENDIENTE_PAGO",
+            codigo_cupon = null,
+        } = req.body;
 
-    return res.status(201).json({
-      message: "Venta web creada correctamente",
-      ...data,
-    });
-  } catch (err) {
-    console.error("Error en crearVentaWeb controller:", err);
-    return res.status(500).json({
-      error: "Error interno al crear venta web",
-      detail: err?.message || String(err),
-    });
-  }
+        // Validaciones mínimas de request
+        const clienteIdNum = Number(cliente_id);
+        if (!Number.isFinite(clienteIdNum) || clienteIdNum <= 0) {
+            return res.status(400).json({ error: "cliente_id es requerido y debe ser numérico" });
+        }
+
+        const itemsNorm = normalizeItems(items);
+        if (!itemsNorm.length) {
+            return res.status(400).json({
+                error: "items debe ser un array con al menos un producto (producto_id, cantidad > 0)",
+            });
+        }
+
+        const montoAbonadoNum = parseNullableNumber(monto_abonado) ?? 0;
+        if (!Number.isFinite(montoAbonadoNum) || montoAbonadoNum < 0) {
+            return res.status(400).json({ error: "monto_abonado inválido" });
+        }
+
+        const estadoNombreFinal =
+            typeof estado_nombre === "string" && estado_nombre.trim()
+                ? estado_nombre.trim().toUpperCase()
+                : "PENDIENTE_PAGO";
+
+        const codigoCuponFinal =
+            typeof codigo_cupon === "string" && codigo_cupon.trim() ? codigo_cupon.trim() : null;
+
+        // ✅ Llamada transaccional a RPC
+        const { data, error } = await supabase.rpc("crear_venta_web", {
+            _cliente_id: clienteIdNum,
+            _items: itemsNorm,
+            _monto_abonado: montoAbonadoNum,
+            _estado_nombre: estadoNombreFinal,
+            _codigo_cupon: codigoCuponFinal,
+        });
+
+        if (error) {
+            console.error("Error RPC crear_venta_web:", error);
+            const mapped = mapDbError(error);
+            return res.status(mapped.status).json(mapped);
+        }
+
+        try {
+            const result = await mailer({
+                venta_id: data?.venta_id,
+                total_final: data?.total_final,
+                cliente_id: clienteIdNum,
+                cantidad_items: itemsNorm.length,
+            });
+
+            console.log("✅ Resend result:", result);
+
+            // 🔥 Si viene error dentro del result, lo tratamos como fallo real
+            if (result?.error) {
+                console.error("❌ Resend error:", result.error);
+            } else {
+                console.log("✅ Email enviado. ID:", result?.data?.id);
+            }
+        } catch (mailErr) {
+            console.error("⚠️ Venta creada pero falló envío de email:", mailErr?.message || mailErr);
+        }
+
+
+        return res.status(201).json({
+            message: "Venta web creada correctamente",
+            ...data,
+        });
+    } catch (err) {
+        console.error("Error en crearVentaWeb controller:", err);
+        return res.status(500).json({
+            error: "Error interno al crear venta web",
+            detail: err?.message || String(err),
+        });
+    }
 };
 
 
@@ -1247,17 +1250,17 @@ export const testResend = async (req, res) => {
 
 
 export const getVentaShopById = async (req, res) => {
-  try {
-    const ventaId = Number(req.params.id);
+    try {
+        const ventaId = Number(req.params.id);
 
-    if (!Number.isFinite(ventaId) || ventaId <= 0) {
-      return res.status(400).json({ error: "id de venta inválido" });
-    }
+        if (!Number.isFinite(ventaId) || ventaId <= 0) {
+            return res.status(400).json({ error: "id de venta inválido" });
+        }
 
-    // 1) Traer venta + estado + cliente + cupón
-    const { data: ventaRow, error: ventaErr } = await supabase
-      .from("venta")
-      .select(`
+        // 1) Traer venta + estado + cliente + cupón
+        const { data: ventaRow, error: ventaErr } = await supabase
+            .from("venta")
+            .select(`
         id, fecha, canal, total, cliente_id, monto_abonado, saldo, cupon_id,
         estado:estado_id (id, nombre, ambito),
         cliente:cliente_id (id, nombre, apellido, dni, email, direccion, celular, celular_contacto, canal_alta),
@@ -1267,17 +1270,17 @@ export const getVentaShopById = async (req, res) => {
           estado:estado_id (id, nombre, ambito)
         )
       `)
-      .eq("id", ventaId)
-      .maybeSingle();
+            .eq("id", ventaId)
+            .maybeSingle();
 
-    if (ventaErr) throw ventaErr;
-    if (!ventaRow) return res.status(404).json({ error: "Venta no encontrada" });
+        if (ventaErr) throw ventaErr;
+        if (!ventaRow) return res.status(404).json({ error: "Venta no encontrada" });
 
-    // 2) Traer detalles + nombre e IMAGEN del producto
-// 2) Traer detalles + nombre e IMAGEN del producto
-    const { data: detallesRows, error: detErr } = await supabase
-      .from("detalle_venta")
-      .select(`
+        // 2) Traer detalles + nombre e IMAGEN del producto
+        // 2) Traer detalles + nombre e IMAGEN del producto
+        const { data: detallesRows, error: detErr } = await supabase
+            .from("detalle_venta")
+            .select(`
         id,
         venta_id,
         producto_id,
@@ -1289,58 +1292,58 @@ export const getVentaShopById = async (req, res) => {
           nombre,
           foto_url
         )
-      `) 
-      .eq("venta_id", ventaId)
-      .order("id", { ascending: true });
+      `)
+            .eq("venta_id", ventaId)
+            .order("id", { ascending: true });
 
-    if (detErr) throw detErr;
+        if (detErr) throw detErr;
 
-    // Normalización de los detalles para el frontend
-    const detalles = (detallesRows || []).map((d) => {
-      const prod = Array.isArray(d.producto) ? d.producto[0] : d.producto;
-      return {
-        producto_id: d.producto_id,
-        producto_nombre: prod?.nombre ?? null,
-        imagen_url: prod?.foto_url ?? null, // 👈 AGREGADO: Ahora el front recibe la URL
-        cantidad: d.cantidad,
-        precio_unitario: Number(d.precio_unitario ?? 0),
-        subtotal: Number(d.subtotal ?? 0),
-      };
-    });
+        // Normalización de los detalles para el frontend
+        const detalles = (detallesRows || []).map((d) => {
+            const prod = Array.isArray(d.producto) ? d.producto[0] : d.producto;
+            return {
+                producto_id: d.producto_id,
+                producto_nombre: prod?.nombre ?? null,
+                imagen_url: prod?.foto_url ?? null, // 👈 AGREGADO: Ahora el front recibe la URL
+                cantidad: d.cantidad,
+                precio_unitario: Number(d.precio_unitario ?? 0),
+                subtotal: Number(d.subtotal ?? 0),
+            };
+        });
 
-    // 3) Totales
-    const total_bruto = detalles.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
-    const total_final = Number(ventaRow.total ?? 0);
-    const descuento = Math.max(0, total_bruto - total_final);
+        // 3) Totales
+        const total_bruto = detalles.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
+        const total_final = Number(ventaRow.total ?? 0);
+        const descuento = Math.max(0, total_bruto - total_final);
 
-    // 4) Respuesta final
-    return res.status(200).json({
-      venta: {
-        id: ventaRow.id,
-        fecha: ventaRow.fecha,
-        canal: ventaRow.canal,
-        total_final,
-        monto_abonado: Number(ventaRow.monto_abonado ?? 0),
-        saldo: Number(ventaRow.saldo ?? 0),
-        total_bruto,
-        descuento,
-        estado_id: ventaRow.estado?.id ?? null,
-        estado_nombre: ventaRow.estado?.nombre ?? null,
-        cliente: ventaRow.cliente || null,
-        cupon: ventaRow.cupon || null,
-      },
-      detalles, // 👈 Aquí los productos ya incluyen su imagen_url
-      total_bruto,
-      descuento,
-      total_final,
-      codigo_cupon: ventaRow.cupon?.codigo ?? null,
-    });
+        // 4) Respuesta final
+        return res.status(200).json({
+            venta: {
+                id: ventaRow.id,
+                fecha: ventaRow.fecha,
+                canal: ventaRow.canal,
+                total_final,
+                monto_abonado: Number(ventaRow.monto_abonado ?? 0),
+                saldo: Number(ventaRow.saldo ?? 0),
+                total_bruto,
+                descuento,
+                estado_id: ventaRow.estado?.id ?? null,
+                estado_nombre: ventaRow.estado?.nombre ?? null,
+                cliente: ventaRow.cliente || null,
+                cupon: ventaRow.cupon || null,
+            },
+            detalles, // 👈 Aquí los productos ya incluyen su imagen_url
+            total_bruto,
+            descuento,
+            total_final,
+            codigo_cupon: ventaRow.cupon?.codigo ?? null,
+        });
 
-  } catch (err) {
-    console.error("Error en getVentaShopById:", err);
-    return res.status(500).json({
-      error: "Error interno al obtener venta",
-      detail: err.message,
-    });
-  }
+    } catch (err) {
+        console.error("Error en getVentaShopById:", err);
+        return res.status(500).json({
+            error: "Error interno al obtener venta",
+            detail: err.message,
+        });
+    }
 };

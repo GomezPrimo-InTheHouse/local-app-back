@@ -1,17 +1,9 @@
-// src/utils/mailerResend.js
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+export default async function mailer({ venta_id, total_final, cliente_id, cantidad_items }) {
+  if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY no configurada");
 
-export const mailer = async ({
-  venta_id,
-  total_final,
-  cliente_id,
-  cantidad_items,
-}) => {
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error("RESEND_API_KEY no configurada");
-  }
+  const resend = new Resend(process.env.RESEND_API_KEY);
 
   return resend.emails.send({
     from: process.env.MAIL_FROM,
@@ -25,5 +17,4 @@ export const mailer = async ({
       <h3>Total: $${total_final}</h3>
     `,
   });
-};
-export default mailer;
+}
