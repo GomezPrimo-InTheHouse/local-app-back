@@ -8,7 +8,8 @@ import {
   getResumenCuentaClienteByID,
   getResumenVentasPorMes,
   resumenPorPeriodo,
-  getResumenVentasPorPeriodo
+  getResumenVentasPorPeriodo,
+  getEstadisticasHistoricas
   
 } from '../controllers/estadisticas.controller.js';
 
@@ -23,7 +24,7 @@ router.get('/resumen-mes', getEstadisticasPorMes);
 router.get('/resumen-ventas-mes', getResumenVentasPorMes);
 router.get('/resumen-ventas-periodo', getResumenVentasPorPeriodo);
 router.post('/resumen-por-periodo', resumenPorPeriodo);
-
+router.get('/estadisticas-historicas', getEstadisticasHistoricas);
 router.get('/resumen-cuenta-cliente/:clienteId', getResumenCuentaClienteByID);
 
 

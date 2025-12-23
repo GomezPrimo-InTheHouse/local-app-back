@@ -1207,3 +1207,159 @@ export const getResumenVentasPorPeriodo = async (req, res) => {
     res.status(500).json({ success: false, error: "Error al obtener el resumen de ventas" });
   }
 };
+
+export const getEstadisticasHistoricas = async (req, res) => {
+  try {
+    const [tallerResp, ventasHistResp] = await Promise.all([
+      supabase.rpc("obtener_balance_presupuestos"),
+      supabase.rpc("obtener_ventas_historico"),
+    ]);
+
+    if (tallerResp.error) {
+      console.error("Error RPC obtener_balance_presupuestos:", tallerResp.error);
+      return res.status(500).json({ success: false, error: tallerResp.error.message || "Error taller" });
+    }
+    if (ventasHistResp.error) {
+      console.error("Error RPC obtener_ventas_historico:", ventasHistResp.error);
+      return res.status(500).json({ success: false, error: ventasHistResp.error.message || "Error ventas" });
+    }
+
+    const tallerRows = Array.isArray(tallerResp.data) ? tallerResp.data : [];
+    const ventasRows = Array.isArray(ventasHistResp.data) ? ventasHistResp.data : [];
+
+    // Meses presentes (unimos ambos)
+    const mesesSet = new Set([
+      ...tallerRows.map(r => r?.mes).filter(Boolean),
+      ...ventasRows.map(r => r?.mes).filter(Boolean),
+    ]);
+
+    // Orden desc por año/mes (MM/YYYY)
+    const mesesOrdenados = Array.from(mesesSet).sort((a, b) => {
+      const [ma, ya] = String(a).split("/").map(Number);
+      const [mb, yb] = String(b).split("/").map(Number);
+      if (ya !== yb) return yb - ya;
+      return mb - ma;
+    });
+
+    const historico = mesesOrdenados.map((periodo) => {
+      // ====== TALLER (ya viene agregado por equipo y mes) ======
+      const tallerDelMes = tallerRows.filter(r => r?.mes === periodo);
+
+      const totalFacturadoTaller = tallerDelMes.reduce((acc, r) => acc + Number(r?.total_total ?? 0), 0);
+      const costoTotalTaller = tallerDelMes.reduce((acc, r) => acc + Number(r?.costo_total ?? 0), 0);
+      const balanceTotalTaller = tallerDelMes.reduce((acc, r) => acc + Number(r?.balance_final ?? 0), 0);
+
+      const resumen_general = {
+        total_facturado: totalFacturadoTaller,
+        costo_total: costoTotalTaller,
+        balance_total: balanceTotalTaller,
+      };
+
+      // ====== VENTAS (RPC trae cada venta con productos + costo_total) ======
+      const ventasDelMes = ventasRows.filter(v => v?.mes === periodo);
+
+      let totalVentas = 0;
+      let totalCostos = 0;
+
+      let totalVentasLocal = 0;
+      let totalCostosLocal = 0;
+
+      let totalVentasWeb = 0;
+      let totalCostosWeb = 0;
+
+      const gastoPorCliente = new Map();
+      const cantidadPorProducto = new Map();
+
+      const ventasNormalizadas = ventasDelMes.map((v) => {
+        const canal = v?.canal || "desconocido";
+        const ventaTotal = Number(v?.total ?? 0);
+        const costoVenta = Number(v?.costo_total ?? 0);
+
+        totalVentas += ventaTotal;
+        totalCostos += costoVenta;
+
+        if (canal === "local") {
+          totalVentasLocal += ventaTotal;
+          totalCostosLocal += costoVenta;
+        } else if (canal === "web_shop") {
+          totalVentasWeb += ventaTotal;
+          totalCostosWeb += costoVenta;
+        }
+
+        // top clientes
+        const clienteId = Number(v?.cliente_id ?? v?.cliente?.id ?? 0);
+        if (clienteId) {
+          const nombre = v?.cliente
+            ? `${v.cliente.nombre || ""} ${v.cliente.apellido || ""}`.trim()
+            : `Cliente ${clienteId}`;
+          const prev = gastoPorCliente.get(clienteId);
+          if (prev) prev.total += ventaTotal;
+          else gastoPorCliente.set(clienteId, { cliente_id: clienteId, nombre, total: ventaTotal });
+        }
+
+        // productos (ya vienen listos del RPC)
+        const productos = Array.isArray(v?.productos) ? v.productos : [];
+
+        // top productos (cantidad)
+        for (const p of productos) {
+          const pid = Number(p?.producto_id ?? 0);
+          const cant = Number(p?.cantidad ?? 0);
+          const nombreProducto = p?.nombre_producto ?? "Producto";
+          if (!pid) continue;
+          const prev = cantidadPorProducto.get(pid);
+          if (prev) prev.cantidad += cant;
+          else cantidadPorProducto.set(pid, { producto_id: pid, nombre_producto: nombreProducto, cantidad: cant });
+        }
+
+        return {
+          venta_id: Number(v?.venta_id ?? 0),
+          fecha: v?.fecha ?? null,
+          canal,
+          total: ventaTotal,
+          productos,
+        };
+      });
+
+      const ventasResumen = {
+        data: {
+          total_ventas: totalVentas,
+          total_costos: totalCostos,
+          total_ganancia: totalVentas - totalCostos,
+          por_canal: {
+            local: {
+              total_ventas: totalVentasLocal,
+              total_costos: totalCostosLocal,
+              total_ganancia: totalVentasLocal - totalCostosLocal,
+            },
+            web_shop: {
+              total_ventas: totalVentasWeb,
+              total_costos: totalCostosWeb,
+              total_ganancia: totalVentasWeb - totalCostosWeb,
+            },
+          },
+          ventas: ventasNormalizadas,
+          top_clientes: Array.from(gastoPorCliente.values()).sort((a,b)=>b.total-a.total).slice(0,5),
+          top_productos: Array.from(cantidadPorProducto.values()).sort((a,b)=>b.cantidad-a.cantidad).slice(0,5),
+        },
+      };
+
+      return {
+        periodo,
+        resumen_general, // mismo nombre que tu endpoint actual
+        taller: {
+          cantidad_equipos: tallerDelMes.length,
+          detalle_por_equipo: tallerDelMes,
+        },
+        ventasResumen,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: { historico },
+    });
+  } catch (error) {
+    console.error("Error en getEstadisticasHistoricas:", error);
+    return res.status(500).json({ success: false, error: error.message || "Error interno" });
+  }
+};
