@@ -953,7 +953,7 @@ export const getEstadisticasPorMes = async (req, res) => {
       success: true,
 
       // ✅ Retrocompatibilidad: por si tu front usa resumen.resumen_general directo
-      resumen_general,
+      // resumen_general,
 
       // ✅ Formato estándar: todo dentro de data
       data: {
