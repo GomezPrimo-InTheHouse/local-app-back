@@ -100,8 +100,8 @@ const { data, error } = await supabase
   .from('cliente')
   .select('*')
   .neq('estado_id', 18) // Excluir los que están dados de baja
-  .order('nombre', { ascending: true });
-
+  // .order('nombre', { ascending: true });
+  .order('id', { ascending: false });
     if (error) throw error;
     res.json(data);
   } catch (err) {
