@@ -28,7 +28,9 @@ const allowedOrigins = [
   "http://localhost:4173",
   "https://local-app-front.vercel.app",
   /\.vercel\.app$/,
-  "http://localhost:7000"
+  "http://localhost:7000",
+  "http://localhost:7001"
+
 ];
 
 // function isHostAllowed(origin) {
