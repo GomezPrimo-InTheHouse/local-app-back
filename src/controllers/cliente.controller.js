@@ -153,6 +153,8 @@ const { data, error } = await supabase
 
 
 /* Crear nuevo cliente -> usa RPC atómica crear_cliente_if_not_exists */
+
+
 export const createCliente = async (req, res) => {
   try {
     console.log("BODY createCliente:", req.body);
@@ -164,62 +166,50 @@ export const createCliente = async (req, res) => {
       direccion,
       celular,
       celular_contacto,
-      foto_url: fotoUrlBody, // por si te mandan un URL directo
-      // tipo_cliente
+      foto_url: fotoUrlBody,
     } = req.body;
 
-    if (!dni) {
-      return res.status(400).json({ msg: "DNI requerido" });
-    }
+    // ✅ CAMBIO: DNI ya no es obligatorio — puede ser null/vacío
+    // ❌ ELIMINAR: if (!dni) { return res.status(400).json({ msg: "DNI requerido" }); }
 
-    const dni_trim = dni.trim();
+    const dni_trim = dni ? dni.trim() : null; // ✅ null si no viene
     let fotoUrlFinal = fotoUrlBody || null;
 
-    // 🔹 Si viene archivo, lo subimos a Supabase Storage
     if (req.file) {
       const file = req.file;
-      const ext =
-        (file.originalname && file.originalname.split(".").pop()) || "jpg";
-      const uniqueId = `${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}`;
+      const ext = (file.originalname && file.originalname.split(".").pop()) || "jpg";
+      const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const fileName = `${uniqueId}.${ext}`;
       const filePath = `clientes/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from("clientes-fotos") // 👈 nombre del bucket
+        .from("clientes-fotos")
         .upload(filePath, file.buffer, {
           contentType: file.mimetype,
           upsert: false,
         });
 
-      if (uploadError) {
-        console.error("Error al subir imagen a Supabase Storage:", uploadError);
-        // Podés elegir seguir sin foto o cortar acá
-        // return res.status(500).json({ error: "No se pudo subir la imagen" });
-      } else {
+      if (!uploadError) {
         const { data: publicData } = supabase.storage
           .from("clientes-fotos")
           .getPublicUrl(filePath);
-
         fotoUrlFinal = publicData?.publicUrl || null;
+      } else {
+        console.error("Error al subir imagen a Supabase Storage:", uploadError);
       }
     }
 
-    // 🔹 Llamamos al RPC (ahora incluye _foto_url)
-    const { data, error } = await supabase.rpc(
-      "crear_cliente_if_not_exists",
-      {
-        _nombre: nombre ?? null,
-        _apellido: apellido ?? null,
-        _dni: dni_trim,
-        _direccion: direccion ?? null,
-        _celular: celular ?? null,
-        _celular_contacto: celular_contacto ?? null,
-        _foto_url: fotoUrlFinal,
-        // _tipo_cliente: tipo_cliente ?? null
-      }
-    );
+    // ✅ CAMBIO: agregamos _canal_alta que requiere la RPC actualizada
+    const { data, error } = await supabase.rpc("crear_cliente_if_not_exists", {
+      _nombre: nombre ?? null,
+      _apellido: apellido ?? null,
+      _dni: dni_trim,           // ✅ puede ser null
+      _direccion: direccion ?? null,
+      _celular: celular ?? null,
+      _celular_contacto: celular_contacto ?? null,
+      _foto_url: fotoUrlFinal,
+      _canal_alta: "local",     // ✅ nuevo parámetro requerido por la RPC
+    });
 
     if (error) {
       const msg = (error.message || "").toUpperCase();
@@ -236,35 +226,6 @@ export const createCliente = async (req, res) => {
     return res.status(500).json({ error: err.message || err });
   }
 };
-
-//fin test create cliente con foto
-
-/* Actualizar cliente -> usa RPC actualizar_cliente para validar dni único */
-// export const updateCliente = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { nombre, apellido, dni, direccion, celular, celular_contacto } = req.body;
-
-//     const { data, error } = await supabase
-//       .rpc('actualizar_cliente', {
-//         _id: id,
-//         _nombre: nombre,
-//         _apellido: apellido,
-//         _dni: dni,
-//         _direccion: direccion,
-//         _celular: celular,
-//         _celular_contacto: celular_contacto
-//       });
-
-//     if (error) throw error;
-//     if (data.length === 0) return res.status(404).json({ msg: 'Cliente no encontrado' });
-
-//     res.json(data[0]);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
-
 /* Actualizar cliente -> usa RPC actualizar_cliente para validar dni único */
 export const updateCliente = async (req, res) => {
   try {

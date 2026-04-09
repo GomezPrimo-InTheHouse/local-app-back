@@ -4,58 +4,7 @@ import { supabase } from "../config/supabase.js";
 import { updateProducto } from "./producto/producto.controller.js";
 
 
-// ✅ Crear una nueva venta el que utilizo 21/12
-// export const createVenta = async (req, res) => {
-//   const { cliente_id, detalle_venta, monto_abonado } = req.body;
 
-//   console.log('createVenta body:', req.body);
-//   try {
-//     // 1️⃣ Calcular total y saldo
-//     let totalVenta = 0;
-//     for (const detalle of detalle_venta) {
-//       const { cantidad, precio_unitario } = detalle;
-//       totalVenta += Number(cantidad) * Number(precio_unitario);
-//     }
-//     const saldoVenta = totalVenta - (Number(monto_abonado) || 0);
-
-//     // 2️⃣ Insertar venta principal
-//     const { data: venta, error: ventaError } = await supabase
-//       .from("venta")
-//       .insert([
-//         {
-//           fecha: new Date(),
-//           total: totalVenta,
-//           monto_abonado: Number(monto_abonado) || 0,
-//           saldo: saldoVenta,
-//           cliente_id,
-//         },
-//       ])
-//       .select()
-//       .single();
-
-//     if (ventaError) throw ventaError;
-
-//     // 3️⃣ Insertar detalles de la venta
-//     const detallesInsert = detalle_venta.map((d) => ({
-//       venta_id: venta.id,
-//       producto_id: d.producto_id,
-//       cantidad: d.cantidad,
-//       precio_unitario: d.precio_unitario,
-//       subtotal: Number(d.cantidad) * Number(d.precio_unitario),
-//     }));
-
-//     const { error: detalleError } = await supabase
-//       .from("detalle_venta")
-//       .insert(detallesInsert);
-
-//     if (detalleError) throw detalleError;
-
-//     res.status(201).json({ success: true, data: venta });
-//   } catch (error) {
-//     console.error("Error en createVenta:", error.message);
-//     res.status(500).json({ success: false, error: "Error al crear la venta" });
-//   }
-// };
 export const createVenta = async (req, res) => {
   const { cliente_id, monto_abonado } = req.body;
 
