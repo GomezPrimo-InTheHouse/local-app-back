@@ -1,5 +1,5 @@
 // controllers/ventaEsporadica.controller.js
-import { supabase } from '../../config/supabase.js';
+import { supabase } from '../config/supabase.js';
 
 /**
  * POST /venta/esporadica
