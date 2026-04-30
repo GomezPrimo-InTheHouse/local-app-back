@@ -25,6 +25,7 @@ const PORT = process.env.PORT || 7001;
 // ⚠️ Actualizá la URL de ngrok vigente si cambia
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://localhost:5174",
   "http://localhost:4173",
   "https://local-app-front.vercel.app",
   /\.vercel\.app$/,
