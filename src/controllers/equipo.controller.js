@@ -1069,19 +1069,18 @@ export const getEquipos = async (req, res) => {
         marca,
         modelo,
         imei,
-        fecha_ingreso,
         estado_id,
         cliente_id,
+        created_at,
         cliente:cliente_id ( nombre, apellido, celular, direccion )
       `)
       .neq('estado_id', 18)
-      .order('fecha_ingreso', { ascending: false });
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    // Para cada equipo traemos su última OT (falla_reportada)
     const equipoIds = (data || []).map(e => e.id);
-    let ultimasFallas = {};
+    let ultimasOTs = {};
 
     if (equipoIds.length > 0) {
       const { data: ots } = await supabase
@@ -1090,31 +1089,30 @@ export const getEquipos = async (req, res) => {
         .in('equipo_id', equipoIds)
         .order('fecha_ingreso', { ascending: false });
 
-      // Quedarnos con la más reciente por equipo
       for (const ot of (ots || [])) {
-        if (!ultimasFallas[ot.equipo_id]) {
-          ultimasFallas[ot.equipo_id] = ot;
+        if (!ultimasOTs[ot.equipo_id]) {
+          ultimasOTs[ot.equipo_id] = ot;
         }
       }
     }
 
     const rows = (data || []).map(item => {
       const clienteRec = Array.isArray(item.cliente) ? item.cliente[0] : item.cliente;
-      const ultimaOT   = ultimasFallas[item.id];
+      const ultimaOT   = ultimasOTs[item.id];
       return {
         id:                item.id,
         tipo:              item.tipo,
         marca:             item.marca,
         modelo:            item.modelo,
         imei:              item.imei,
-        fecha_ingreso:     item.fecha_ingreso,
+        // fecha_ingreso viene de la última OT, con fallback a created_at del equipo
+        fecha_ingreso:     ultimaOT?.fecha_ingreso ?? item.created_at,
         estado_id:         item.estado_id,
         cliente_id:        item.cliente_id,
         cliente_nombre:    clienteRec?.nombre    ?? null,
         cliente_apellido:  clienteRec?.apellido  ?? null,
         cliente_celular:   clienteRec?.celular   ?? null,
         cliente_direccion: clienteRec?.direccion ?? null,
-        // datos de la última OT
         ultima_falla:      ultimaOT?.falla_reportada ?? null,
         ultima_password:   ultimaOT?.password        ?? null,
         ultimo_patron:     ultimaOT?.patron           ?? null,
