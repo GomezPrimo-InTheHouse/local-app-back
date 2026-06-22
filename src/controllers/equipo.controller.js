@@ -1156,6 +1156,12 @@ export const getEquipos = async (req, res) => {
         .in('equipo_id', equipoIds)
         .order('fecha_ingreso', { ascending: false });
 
+
+        // AGREGAR ESTO TEMPORALMENTE
+  console.log('OTs error:', otsError);
+  console.log('OTs count:', ots?.length);
+  console.log('OT equipo 360:', ots?.filter(o => o.equipo_id === 360));
+
       for (const ot of (ots || [])) {
         // Nos quedamos con la primera (más reciente) de cada equipo
         if (!ultimasOTs[ot.equipo_id]) {
