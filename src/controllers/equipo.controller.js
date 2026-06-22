@@ -1128,6 +1128,7 @@ export const createEquipo = async (req, res) => {
 
 export const getEquipos = async (req, res) => {
   try {
+    // 1. Traer todos los equipos activos
     const { data, error } = await supabase
       .from('equipo')
       .select(`
@@ -1142,7 +1143,6 @@ export const getEquipos = async (req, res) => {
         cliente:cliente_id ( nombre, apellido, celular, direccion )
       `)
       .neq('estado_id', 18);
-      // ⚠️ Sacamos el .order() de acá - vamos a ordenar después de mergear con la última OT
 
     if (error) throw error;
 
@@ -1150,22 +1150,24 @@ export const getEquipos = async (req, res) => {
     let ultimasOTs = {};
 
     if (equipoIds.length > 0) {
-      const { data: ots } = await supabase
+      // 2. Traer la última OT de cada equipo
+      const { data: ots, error: otsError } = await supabase
         .from('orden_trabajo')
-        .select('equipo_id, falla_reportada, fecha_ingreso, password, patron, created_at')
+        .select('equipo_id, falla_reportada, fecha_ingreso, password, patron')
         .in('equipo_id', equipoIds)
         .order('fecha_ingreso', { ascending: false });
 
+      if (otsError) {
+        console.error('❌ Error trayendo OTs:', otsError);
+      } else {
+        console.log(`✅ OTs traídas: ${ots?.length ?? 0}`);
+        console.log('🔍 OTs equipo 360:', ots?.filter(o => o.equipo_id === 360));
 
-        // AGREGAR ESTO TEMPORALMENTE
-  console.log('OTs error:', otsError);
-  console.log('OTs count:', ots?.length);
-  console.log('OT equipo 360:', ots?.filter(o => o.equipo_id === 360));
-
-      for (const ot of (ots || [])) {
-        // Nos quedamos con la primera (más reciente) de cada equipo
-        if (!ultimasOTs[ot.equipo_id]) {
-          ultimasOTs[ot.equipo_id] = ot;
+        for (const ot of (ots || [])) {
+          // Nos quedamos con la más reciente por equipo
+          if (!ultimasOTs[ot.equipo_id]) {
+            ultimasOTs[ot.equipo_id] = ot;
+          }
         }
       }
     }
@@ -1173,9 +1175,6 @@ export const getEquipos = async (req, res) => {
     const rows = (data || []).map(item => {
       const clienteRec = Array.isArray(item.cliente) ? item.cliente[0] : item.cliente;
       const ultimaOT   = ultimasOTs[item.id];
-
-      // ⬇️ CLAVE: la fecha que se usa para ordenar/agrupar es la de la última OT,
-      // con fallback a created_at del equipo si nunca tuvo una OT
       const fechaOrden = ultimaOT?.fecha_ingreso ?? item.created_at;
 
       return {
@@ -1191,21 +1190,20 @@ export const getEquipos = async (req, res) => {
         cliente_apellido:  clienteRec?.apellido  ?? null,
         cliente_celular:   clienteRec?.celular   ?? null,
         cliente_direccion: clienteRec?.direccion ?? null,
-        // datos de la última OT
         ultima_falla:      ultimaOT?.falla_reportada ?? null,
         ultima_password:   ultimaOT?.password        ?? null,
         ultimo_patron:     ultimaOT?.patron           ?? null,
-        // flag útil para saber si nunca tuvo OT
         tiene_orden:       !!ultimaOT,
       };
     });
 
-    // ⬇️ Ordenamos acá, por fecha_ingreso (que ya es la de la última OT)
+    // Ordenar por fecha de la última OT (más reciente primero)
     rows.sort((a, b) => new Date(b.fecha_ingreso) - new Date(a.fecha_ingreso));
 
-    res.status(200).json(rows);
+    return res.status(200).json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ Error en getEquipos:', err);
+    return res.status(500).json({ error: err.message });
   }
 };
 /**
