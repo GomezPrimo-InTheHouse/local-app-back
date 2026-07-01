@@ -9,8 +9,8 @@ import {
   getResumenVentasPorMes,
   resumenPorPeriodo,
   getResumenVentasPorPeriodo,
-  getEstadisticasHistoricas
-  
+  getEstadisticasHistoricas,
+  getResumenSemana
 } from '../controllers/estadisticas.controller.js';
 
 const router = Router();
@@ -26,6 +26,8 @@ router.get('/resumen-ventas-periodo', getResumenVentasPorPeriodo);
 router.post('/resumen-por-periodo', resumenPorPeriodo);
 router.get('/estadisticas-historicas', getEstadisticasHistoricas);
 router.get('/resumen-cuenta-cliente/:clienteId', getResumenCuentaClienteByID);
+
+router.get('/resumen-semana', getResumenSemana);
 
 
 export default router;
