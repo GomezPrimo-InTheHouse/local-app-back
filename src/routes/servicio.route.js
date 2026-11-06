@@ -8,7 +8,7 @@ import {
   aumentarPreciosServicios,
   getConfiguracionServicios,
   updateConfiguracionServicios,
-} from "../controllers/servicio.controller.js";
+} from "../controllers/servicio.controllers.js";
 import { autorizacionDeRoles } from "../middlewares/auth/autorizacionDeRoles.js";
 
 const router = Router();
