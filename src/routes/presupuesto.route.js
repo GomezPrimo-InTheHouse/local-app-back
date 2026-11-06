@@ -100,7 +100,7 @@ import {
   savePresupuestoDetalles,
   getPresupuestoWithDetalles
 } from '../controllers/presupuesto.controller.js';
-import { getPresupuestoServicios, savePresupuestoServicios } from '../controllers/servicio.controller.js';
+import { getPresupuestoServicios, savePresupuestoServicios } from '../controllers/servicio.controllers.js';
 
 router.get('/',                          getPresupuestos);           // todos los presupuestos
 router.post('/',                         createPresupuesto);         // crear presupuesto
