@@ -19,6 +19,7 @@ import PagoRoute              from "../routes/pago/pago.routes.js";
 import FavoritosRoute         from "../routes/shop/favoritos.route.js";
 import CelularRoute           from "../routes/celular/celular.route.js";
 import DolarRoute             from "../routes/celular/dolar.route.js";
+import ServicioRoute          from "../routes/servicio.route.js";
 dotenv.config();
 
 const app = express();
@@ -84,6 +85,7 @@ app.use("/pago",              PagoRoute);
 app.use("/favoritos",         FavoritosRoute);
 app.use("/celular",           CelularRoute);
 app.use("/dolar",             DolarRoute);
+app.use("/servicio",          ServicioRoute);
 
 // healthcheck
 app.get("/health", (_req, res) => {
