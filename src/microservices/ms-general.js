@@ -31,6 +31,8 @@ const allowedOrigins = [
   "http://localhost:4173",
   "https://local-app-front.vercel.app",
   /\.vercel\.app$/,
+  "https://jginformatica.com",      // ← nuevo
+  "https://www.jginformatica.com",  // ← nuevo
   "http://localhost:7000",
   "http://localhost:7001"
 ];
