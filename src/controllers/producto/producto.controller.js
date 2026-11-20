@@ -395,12 +395,23 @@ export const updateProducto = async (req, res) => {
 
 
 // ✅ Obtener todos los productos
+// Columnas que puede ver cualquiera (shop web). Sin costo, costo_usd ni margen.
+const PRODUCTO_COLUMNAS_PUBLICAS =
+  "id, nombre, stock, precio, descripcion, estado_id, categoria, categoria_id, " +
+  "foto_url, foto_url_2, subir_web, oferta, descripcion_web, tipo_entrega, " +
+  "ram_gb, almacenamiento_gb, gama, marca, color";
+
 export const getProductos = async (req, res) => {
   try {
-    const { data, error } = await supabase
+    // Con token (app del local) → todo. Sin token (shop) → solo web y sin costos.
+    const esPublico = !req.user;
+    let query = supabase
       .from("producto")
-      .select("*")
+      .select(esPublico ? PRODUCTO_COLUMNAS_PUBLICAS : "*")
       .order("id", { ascending: false });
+    if (esPublico) query = query.eq("subir_web", true);
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
@@ -424,11 +435,13 @@ export const getProductoById = async (req, res) => {
       });
     }
 
-    const { data, error } = await supabase
+    const esPublico = !req.user;
+    let query = supabase
       .from('producto')
-      .select('*')
-      .eq('id', idNum)
-      .single();
+      .select(esPublico ? PRODUCTO_COLUMNAS_PUBLICAS : '*')
+      .eq('id', idNum);
+    if (esPublico) query = query.eq('subir_web', true);
+    const { data, error } = await query.single();
 
     if (error) throw error;
     if (!data) {
@@ -586,4 +599,3 @@ export const getRepuestosProducto = async (req, res) => {
     });
   }
 };
-

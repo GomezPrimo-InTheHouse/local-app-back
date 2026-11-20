@@ -19,7 +19,7 @@ import PagoRoute              from "../routes/pago/pago.routes.js";
 import FavoritosRoute         from "../routes/shop/favoritos.route.js";
 import CelularRoute           from "../routes/celular/celular.route.js";
 import DolarRoute             from "../routes/celular/dolar.route.js";
-import ServicioRoute          from "../routes/servicio.route.js";
+import { requireAuth }        from "../middlewares/auth/autorizacionDeRoles.js";
 dotenv.config();
 
 const app = express();
@@ -31,8 +31,6 @@ const allowedOrigins = [
   "http://localhost:4173",
   "https://local-app-front.vercel.app",
   /\.vercel\.app$/,
-  "https://jginformatica.com",      // ← nuevo
-  "https://www.jginformatica.com",  // ← nuevo
   "http://localhost:7000",
   "http://localhost:7001"
 ];
@@ -71,23 +69,26 @@ app.use(morgan("dev"));
 app.use(json());
 
 // rutas
-app.use("/equipo",            EquipoRoute);
-app.use("/cliente",           ClienteRoute);
-app.use("/presupuesto",       PresupuestoRoute);
-app.use("/orden-trabajo",     OrdenTrabajoRoute);
+// 🔒 Todo lo de la app del local exige token (requireAuth).
+// 🌐 Públicas: /auth (tiene sus propias credenciales), /shop y /favoritos
+//    (las usa el shop web) y GET /producto (versión reducida, ver producto.route.js).
 app.use("/auth",              AuthRoute);
-app.use("/estado",            EstadoRoute);
-app.use("/historial",         HistorialRoute);
-app.use("/estadisticas",      EstadisticasRoute);
-app.use("/producto",          ProductoRoute);
-app.use("/venta",             VentaRoute);
-app.use("/categoria-producto", CategoriaProductoRoute);
 app.use("/shop",              ShopRoute);
-app.use("/pago",              PagoRoute);
 app.use("/favoritos",         FavoritosRoute);
-app.use("/celular",           CelularRoute);
-app.use("/dolar",             DolarRoute);
-app.use("/servicio",          ServicioRoute);
+app.use("/producto",          ProductoRoute);
+
+app.use("/equipo",            requireAuth, EquipoRoute);
+app.use("/cliente",           requireAuth, ClienteRoute);
+app.use("/presupuesto",       requireAuth, PresupuestoRoute);
+app.use("/orden-trabajo",     requireAuth, OrdenTrabajoRoute);
+app.use("/estado",            requireAuth, EstadoRoute);
+app.use("/historial",         requireAuth, HistorialRoute);
+app.use("/estadisticas",      requireAuth, EstadisticasRoute);
+app.use("/venta",             requireAuth, VentaRoute);
+app.use("/categoria-producto", requireAuth, CategoriaProductoRoute);
+app.use("/pago",              requireAuth, PagoRoute);
+app.use("/celular",           requireAuth, CelularRoute);
+app.use("/dolar",             requireAuth, DolarRoute);
 
 // healthcheck
 app.get("/health", (_req, res) => {

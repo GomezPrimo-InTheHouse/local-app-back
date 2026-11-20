@@ -1,70 +1,3 @@
-// import jwt from 'jsonwebtoken';
-// const { sign, verify } = jwt;
-
-
-
-// // recibi por parametro a los roles permitidos, dependiendo de la ruta que se quiera proteger
-
-// // ## Roles y Permisos
-
-// // - **Organizadores**: Acceso completo a gestión de eventos y programación
-// // - **Administradores**: Acceso total al sistema
-
-// export const autorizacionDeRoles = (...rolesPermitidos) => {
-  
-//   return (req, res, next) => {
-//     const authHeader = req.headers.authorization;
-
-//     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-//       return res.status(401).json({ error: 'Token no proporcionado' });
-//     }
-
-//     const token = authHeader.split(' ')[1];
-
-//     try {
-//       const decoded = verify(token, process.env.JWT_SECRET);
-//       const userRole = decoded.rol;
-
-//       if (!rolesPermitidos.includes(userRole)) {
-//         return res.status(403).json({ error: 'No tienes permisos para acceder a este recurso' });
-//       }
-
-//       // Guardamos los datos del usuario en la request para usarlos después
-//       req.user = decoded;
-//       next();
-//     } catch (error) {
-//       console.error('Error al verificar token:', error);
-//       return res.status(403).json({ error: 'Token inválido o expirado' });
-//     }
-//   };
-// };
-
-
-
-
-
-// // const verificarEventoExistente = async (req, res, next) => {
-// //   const { nombre } = req.body;
-
-// //   try {
-// //     const result = await pool.query('SELECT * FROM eventos WHERE nombre = $1', [nombre]);
-
-// //     if (result.rows.length > 0) {
-// //       return res.status(409).json({ error: 'El evento ya existe.' });
-// //     }
-
-// //     next();
-// //   } catch (error) {
-// //     console.error('Error al verificar evento existente:', error);
-// //     return res.status(500).json({ error: 'Error interno del servidor' });
-// //   }
-// // };
-
-
-// export default {
-//   autorizacionDeRoles
-// };
-
 import jwt from 'jsonwebtoken';
 const { verify } = jwt;
 
@@ -137,7 +70,25 @@ export const autorizacionDeRoles = (...rolesPermitidos) => {
   };
 };
 
+/**
+ * Autenticación OPCIONAL: si viene un token válido deja req.user;
+ * si no viene (o es inválido) sigue igual, como visitante anónimo.
+ * Se usa en endpoints que comparten el shop público y la app del local
+ * (ej. GET /producto): el controller decide qué datos devolver.
+ */
+export const optionalAuth = (req, _res, next) => {
+  const token = extraerToken(req);
+  if (!token) return next();
+  try {
+    req.user = verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+  } catch {
+    // token inválido/vencido: lo tratamos como anónimo
+  }
+  next();
+};
+
 export default {
   requireAuth,
   autorizacionDeRoles,
+  optionalAuth,
 };

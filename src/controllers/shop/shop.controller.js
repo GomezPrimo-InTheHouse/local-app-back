@@ -1294,7 +1294,7 @@ export const getVentaShopById = async (req, res) => {
             .select(`
         id, fecha, canal, total, cliente_id, monto_abonado, saldo, cupon_id,
         estado:estado_id (id, nombre, ambito),
-        cliente:cliente_id (id, nombre, apellido, dni, email, direccion, celular, celular_contacto, canal_alta),
+        cliente:cliente_id (id, nombre, apellido),
         cupon:cupon_id (
           id, codigo, descripcion, descuento_porcentaje, descuento_monto,
           valido_desde, valido_hasta, uso_maximo, usos_realizados,
@@ -1302,6 +1302,7 @@ export const getVentaShopById = async (req, res) => {
         )
       `)
             .eq("id", ventaId)
+            .eq("canal", "web_shop") // solo pedidos del shop, no ventas del local
             .maybeSingle();
 
         if (ventaErr) throw ventaErr;
