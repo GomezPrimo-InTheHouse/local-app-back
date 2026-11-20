@@ -19,7 +19,9 @@ import PagoRoute              from "../routes/pago/pago.routes.js";
 import FavoritosRoute         from "../routes/shop/favoritos.route.js";
 import CelularRoute           from "../routes/celular/celular.route.js";
 import DolarRoute             from "../routes/celular/dolar.route.js";
+import ServicioRoute          from "../routes/servicio.route.js";
 import { requireAuth }        from "../middlewares/auth/autorizacionDeRoles.js";
+import { getEquipoByMarcaModeloDni } from "../controllers/equipo.controller.js";
 dotenv.config();
 
 const app = express();
@@ -31,6 +33,8 @@ const allowedOrigins = [
   "http://localhost:4173",
   "https://local-app-front.vercel.app",
   /\.vercel\.app$/,
+  "https://jginformatica.com",
+  "https://www.jginformatica.com",
   "http://localhost:7000",
   "http://localhost:7001"
 ];
@@ -76,6 +80,9 @@ app.use("/auth",              AuthRoute);
 app.use("/shop",              ShopRoute);
 app.use("/favoritos",         FavoritosRoute);
 app.use("/producto",          ProductoRoute);
+// 🌐 Consulta pública de la web (jginformatica.com): estado del equipo por marca + modelo + DNI.
+// Va ANTES del app.use("/equipo", requireAuth, ...) para que no pida token.
+app.post("/equipo/marca-modelo-dni", getEquipoByMarcaModeloDni);
 
 app.use("/equipo",            requireAuth, EquipoRoute);
 app.use("/cliente",           requireAuth, ClienteRoute);
@@ -89,6 +96,7 @@ app.use("/categoria-producto", requireAuth, CategoriaProductoRoute);
 app.use("/pago",              requireAuth, PagoRoute);
 app.use("/celular",           requireAuth, CelularRoute);
 app.use("/dolar",             requireAuth, DolarRoute);
+app.use("/servicio",          requireAuth, ServicioRoute);
 
 // healthcheck
 app.get("/health", (_req, res) => {
