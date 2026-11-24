@@ -262,6 +262,15 @@ const { data, error } = await supabase
 
 /* Crear nuevo cliente -> usa RPC atómica crear_cliente_si_no_existe */
 
+/* Mensaje legible cuando el DNI ya pertenece a otro cliente */
+const mensajeClienteExiste = (error) => {
+  const texto = String(error?.message || "");
+  const limpio = texto.replace(/^.*CLIENTE_EXISTE:\s*/i, "").trim();
+  return limpio && !/duplicate key/i.test(limpio)
+    ? limpio
+    : "El DNI ingresado ya está registrado a nombre de otro cliente.";
+};
+
 export const createCliente = async (req, res) => {
   try {
     console.log("BODY createCliente:", req.body);
@@ -319,9 +328,9 @@ export const createCliente = async (req, res) => {
     });
 
     if (error) {
-      const msg = (error.message || "").toUpperCase();
-      if (msg.includes("CLIENTE_EXISTE")) {
-        return res.status(400).json({ msg: "El cliente ya existe" });
+      // DNI ya registrado a nombre de otro cliente: no se crea ni se modifica nada
+      if ((error.message || "").toUpperCase().includes("CLIENTE_EXISTE")) {
+        return res.status(409).json({ msg: mensajeClienteExiste(error) });
       }
       return res.status(500).json({ error: error.message || error });
     }
@@ -401,6 +410,10 @@ export const updateCliente = async (req, res) => {
     return res.json(data[0]);
   } catch (err) {
     console.error("Error en updateCliente:", err);
+    // DNI ya registrado a nombre de otro cliente
+    if ((err?.message || "").toUpperCase().includes("CLIENTE_EXISTE") || err?.code === "23505") {
+      return res.status(409).json({ msg: mensajeClienteExiste(err) });
+    }
     return res.status(500).json({ error: err.message || err });
   }
 };
