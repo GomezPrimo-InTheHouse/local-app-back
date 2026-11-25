@@ -19,6 +19,7 @@ import PagoRoute              from "../routes/pago/pago.routes.js";
 import FavoritosRoute         from "../routes/shop/favoritos.route.js";
 import CelularRoute           from "../routes/celular/celular.route.js";
 import DolarRoute             from "../routes/celular/dolar.route.js";
+import ServicioRoute          from "../routes/servicio.route.js";
 import { requireAuth }        from "../middlewares/auth/autorizacionDeRoles.js";
 dotenv.config();
 
@@ -89,6 +90,7 @@ app.use("/categoria-producto", requireAuth, CategoriaProductoRoute);
 app.use("/pago",              requireAuth, PagoRoute);
 app.use("/celular",           requireAuth, CelularRoute);
 app.use("/dolar",             requireAuth, DolarRoute);
+app.use("/servicio",          requireAuth, ServicioRoute);
 
 // healthcheck
 app.get("/health", (_req, res) => {
