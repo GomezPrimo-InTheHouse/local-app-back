@@ -1062,9 +1062,12 @@ export const deletePresupuesto = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Baja lógica (estado 18 = "Registro dado de baja"), igual que clientes y equipos.
+    // No se borra el registro: conserva historial y líneas de servicio, y los
+    // balances ya excluyen el estado 18.
     const { data, error } = await supabase
       .from('presupuesto')
-      .delete()
+      .update({ estado_id: 18 })
       .eq('id', id)
       .select()
       .single();
