@@ -12,7 +12,7 @@ export const register = async (req, res) => {
       return res.status(400).json({ error: 'Faltan nombre, email o password' });
     }
     // Validar rol desde .env o base de datos
-    const rolesPermitidos = ['usuario', 'admin'];
+    const rolesPermitidos = ['admin', 'tecnico'];
     if (!rolesPermitidos.includes(rol)) {
       return res.status(400).json({ error: `Rol inválido. Roles permitidos: ${rolesPermitidos.join(',')}` });
     }
@@ -64,7 +64,8 @@ export const register = async (req, res) => {
 //obtener todos los usuarios
 export const obtenerUsuarios = async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM usuario');
+    // Nunca exponer password_hash ni totp_seed
+    const result = await pool.query('SELECT id, nombre, email, rol, estado_id, creado_en FROM usuario ORDER BY id');
     return res.status(200).json(result.rows);
   } catch (error) {
     console.error('Error al obtener usuarios:', error);

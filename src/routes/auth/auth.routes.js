@@ -15,7 +15,8 @@ import { autorizacionDeRoles } from '../../middlewares/auth/autorizacionDeRoles.
 
 
 //Explicacion de la ruta /register en README.md
-router.post('/register', register);
+// Solo un admin logueado puede crear usuarios
+router.post('/register', autorizacionDeRoles('admin'), register);
 //Explicacion de la ruta /login en README.md
 router.post('/login', basicAuth, login)
 
@@ -28,7 +29,8 @@ router.post('/darDeBaja/:id', autorizacionDeRoles('admin'), darDeBajaUsuario)
 
 
 
-router.get('/obtenerUsuarios', obtenerUsuarios)
+// Solo admin; no devuelve password_hash ni totp_seed
+router.get('/obtenerUsuarios', autorizacionDeRoles('admin'), obtenerUsuarios)
 
 
 export default router;
