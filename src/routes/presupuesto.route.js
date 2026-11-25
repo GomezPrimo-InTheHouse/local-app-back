@@ -101,10 +101,11 @@ import {
   getPresupuestoWithDetalles
 } from '../controllers/presupuesto.controller.js';
 import { getPresupuestoServicios, savePresupuestoServicios } from '../controllers/servicio.controllers.js';
+import { soloAdmin } from '../middlewares/auth/permisos.js';
 
 router.get('/',                          getPresupuestos);           // todos los presupuestos
 router.post('/',                         createPresupuesto);         // crear presupuesto
-router.get('/balance',                   getBalancePresupuestos);    // balance general o por equipo
+router.get('/balance',                   soloAdmin, getBalancePresupuestos);    // solo admin: montos de balance
 router.post('/:id/aprobar-venta',        aprobarPresupuesto);        // aprobar y generar venta
 router.get('/:id/with-detalles',         getPresupuestoWithDetalles);// presupuesto + detalles
 router.get('/:id/servicios',             getPresupuestoServicios);   // líneas de servicio del presupuesto

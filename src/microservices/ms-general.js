@@ -21,6 +21,8 @@ import CelularRoute           from "../routes/celular/celular.route.js";
 import DolarRoute             from "../routes/celular/dolar.route.js";
 import ServicioRoute          from "../routes/servicio.route.js";
 import { requireAuth }        from "../middlewares/auth/autorizacionDeRoles.js";
+import { requireModulo, requireActivo, soloAdmin } from "../middlewares/auth/permisos.js";
+import EmpleadoRoute          from "../routes/auth/empleado.route.js";
 dotenv.config();
 
 const app = express();
@@ -78,19 +80,26 @@ app.use("/shop",              ShopRoute);
 app.use("/favoritos",         FavoritosRoute);
 app.use("/producto",          ProductoRoute);
 
-app.use("/equipo",            requireAuth, EquipoRoute);
-app.use("/cliente",           requireAuth, ClienteRoute);
-app.use("/presupuesto",       requireAuth, PresupuestoRoute);
-app.use("/orden-trabajo",     requireAuth, OrdenTrabajoRoute);
-app.use("/estado",            requireAuth, EstadoRoute);
-app.use("/historial",         requireAuth, HistorialRoute);
-app.use("/estadisticas",      requireAuth, EstadisticasRoute);
-app.use("/venta",             requireAuth, VentaRoute);
-app.use("/categoria-producto", requireAuth, CategoriaProductoRoute);
-app.use("/pago",              requireAuth, PagoRoute);
-app.use("/celular",           requireAuth, CelularRoute);
-app.use("/dolar",             requireAuth, DolarRoute);
-app.use("/servicio",          requireAuth, ServicioRoute);
+// 👤 Admin: todo. Empleado (rol tecnico): solo los módulos habilitados en usuario.modulos.
+//    requireModulo(principal, ...lectura): para escribir hace falta el módulo principal;
+//    para leer (GET) alcanza con cualquiera de la lista.
+app.use("/equipo",            requireModulo("equipos"), EquipoRoute);
+app.use("/cliente",           requireModulo("clientes", "equipos", "ventas", "celulares"), ClienteRoute);
+app.use("/presupuesto",       requireModulo("equipos"), PresupuestoRoute);
+app.use("/orden-trabajo",     requireModulo("equipos"), OrdenTrabajoRoute);
+app.use("/estado",            requireActivo, EstadoRoute);
+app.use("/historial",         requireModulo("equipos", "clientes"), HistorialRoute);
+app.use("/venta",             requireModulo("ventas", "clientes"), VentaRoute);
+app.use("/categoria-producto", requireModulo("productos", "ventas"), CategoriaProductoRoute);
+app.use("/pago",              requireModulo("ventas", "equipos"), PagoRoute);
+app.use("/celular",           requireModulo("celulares"), CelularRoute);
+app.use("/dolar",             requireModulo("celulares", "ventas", "productos"), DolarRoute);
+// Catálogo de servicios: lo lee el presupuesto (Equipos); las escrituras ya son solo admin
+app.use("/servicio",          requireModulo("servicios", "equipos"), ServicioRoute);
+
+// 🔒 Siempre solo admin: estadísticas/KPIs y gestión de empleados
+app.use("/estadisticas",      soloAdmin, EstadisticasRoute);
+app.use("/empleado",          soloAdmin, EmpleadoRoute);
 
 // healthcheck
 app.get("/health", (_req, res) => {

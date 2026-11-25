@@ -50,7 +50,7 @@ export const login = async (req, res) => {
 
     // 3. Generar tokens JWT
     const accessToken = sign(
-      { userId: usuario.id, email: usuario.email, rol: usuario.rol },
+      { userId: usuario.id, email: usuario.email, rol: usuario.rol, nombre: usuario.nombre, modulos: usuario.modulos || [] },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );

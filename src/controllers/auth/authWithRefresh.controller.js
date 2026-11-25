@@ -163,7 +163,7 @@ export const refreshAccessToken = async (req, res) => {
     // 3. Usuario fresco: si lo dieron de baja o le cambiaron el rol, se refleja acá
     const { data: user, error: userError } = await supabase
       .from('usuario')
-      .select('id, email, rol, estado_id')
+      .select('id, email, rol, estado_id, nombre, modulos')
       .eq('id', userId)
       .maybeSingle();
 
@@ -179,7 +179,7 @@ export const refreshAccessToken = async (req, res) => {
 
     // 4. Nuevo accessToken con el rol real de la base
     const newAccessToken = sign(
-      { userId: user.id, email: user.email, rol: user.rol },
+      { userId: user.id, email: user.email, rol: user.rol, nombre: user.nombre, modulos: user.modulos || [] },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
