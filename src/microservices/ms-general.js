@@ -91,7 +91,8 @@ app.use("/estado",            requireActivo, EstadoRoute);
 app.use("/historial",         requireModulo("equipos", "clientes"), HistorialRoute);
 app.use("/venta",             requireModulo("ventas", "clientes"), VentaRoute);
 app.use("/categoria-producto", requireModulo("productos", "ventas"), CategoriaProductoRoute);
-app.use("/pago",              requireModulo("ventas", "equipos"), PagoRoute);
+// /pago = abonos de reparaciones (pago_abono). Los pagos de ventas van por /venta.
+app.use("/pago",              requireModulo("equipos", "clientes"), PagoRoute);
 app.use("/celular",           requireModulo("celulares"), CelularRoute);
 app.use("/dolar",             requireModulo("celulares", "ventas", "productos"), DolarRoute);
 // Catálogo de servicios: lo lee el presupuesto (Equipos); las escrituras ya son solo admin
