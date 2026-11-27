@@ -1,4 +1,3 @@
-// postgresql://postgres:39173125juli@db.maphvkklznpiwelcofuo.supabase.co:5432/postgres
 
 // nuevo
 // config/supabase.js
