@@ -2,7 +2,8 @@
 // Consulta pública del estado de un equipo, usada por la web jginformatica.com.
 // No requiere login. Devuelve solo los datos necesarios para el cliente
 // (nada de IMEI, nombre ni DNI).
-import { pool } from '../../config/supabaseAuthModule.js';
+// Usa el cliente de Supabase (API REST), la misma vía que el resto del sistema.
+import { supabase } from '../../config/supabase.js';
 
 // Estados que no se muestran al público
 const ESTADOS_OCULTOS = [16]; // Dado de baja
@@ -82,19 +83,50 @@ export const consultarEstadoEquipo = async (req, res) => {
   }
 
   try {
-    // El DNI se compara solo por sus números (hay DNI cargados con puntos)
-    const { rows } = await pool.query(
-      `SELECT e.id, e.tipo, e.marca, e.modelo, e.fecha_ingreso, e.updated_at,
-              e.estado_id, es.nombre AS estado_nombre
-         FROM equipo e
-         JOIN cliente c ON c.id = e.cliente_id
-    LEFT JOIN estado es ON es.id = e.estado_id
-        WHERE regexp_replace(c.dni, '\\D', '', 'g') = $1
-          AND (e.estado_id IS NULL OR NOT (e.estado_id = ANY($2::int[])))
-     ORDER BY e.fecha_ingreso DESC NULLS LAST, e.id DESC
-        LIMIT 50`,
-      [dni, ESTADOS_OCULTOS]
-    );
+    // 1) Clientes con ese DNI. Se contemplan las formas en que está cargado:
+    //    "30123456", "30.123.456" y dos DNI en el mismo campo ("30123456 / 31234567").
+    const conPuntos = dni.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const { data: clientes, error: errClientes } = await supabase
+      .from('cliente')
+      .select('id, dni')
+      .or(`dni.eq.${dni},dni.eq."${conPuntos}",dni.ilike.%${dni}%`)
+      .limit(20);
+    if (errClientes) throw errClientes;
+
+    const idsClientes = (clientes || [])
+      .filter((c) => {
+        const txt = String(c.dni ?? '');
+        return txt.replace(/\D/g, '') === dni || (txt.match(/\d+/g) || []).includes(dni);
+      })
+      .map((c) => c.id);
+
+    let rows = [];
+    if (idsClientes.length > 0) {
+      // 2) Equipos de esos clientes, el más reciente primero
+      const { data: equiposDb, error: errEquipos } = await supabase
+        .from('equipo')
+        .select('id, tipo, marca, modelo, fecha_ingreso, updated_at, estado_id')
+        .in('cliente_id', idsClientes)
+        .order('fecha_ingreso', { ascending: false, nullsFirst: false })
+        .order('id', { ascending: false })
+        .limit(50);
+      if (errEquipos) throw errEquipos;
+
+      const visibles = (equiposDb || []).filter((e) => !ESTADOS_OCULTOS.includes(e.estado_id));
+
+      // 3) Nombre de cada estado
+      const idsEstado = [...new Set(visibles.map((e) => e.estado_id).filter(Boolean))];
+      let nombres = {};
+      if (idsEstado.length > 0) {
+        const { data: estados, error: errEstados } = await supabase
+          .from('estado')
+          .select('id, nombre')
+          .in('id', idsEstado);
+        if (errEstados) throw errEstados;
+        nombres = Object.fromEntries((estados || []).map((es) => [es.id, es.nombre]));
+      }
+      rows = visibles.map((e) => ({ ...e, estado_nombre: nombres[e.estado_id] ?? null }));
+    }
 
     const equipos = rows
       .filter((e) => coincideMarca(marca, e.marca) && coincideModelo(modelo, e.modelo))
