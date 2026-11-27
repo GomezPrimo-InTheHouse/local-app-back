@@ -23,6 +23,7 @@ import ServicioRoute          from "../routes/servicio.route.js";
 import { requireAuth }        from "../middlewares/auth/autorizacionDeRoles.js";
 import { requireModulo, requireActivo, soloAdmin } from "../middlewares/auth/permisos.js";
 import EmpleadoRoute          from "../routes/auth/empleado.route.js";
+import PublicoRoute           from "../routes/publico/publico.route.js";
 dotenv.config();
 
 const app = express();
@@ -34,6 +35,8 @@ const allowedOrigins = [
   "http://localhost:4173",
   "https://local-app-front.vercel.app",
   /\.vercel\.app$/,
+  "https://jginformatica.com",
+  "https://www.jginformatica.com",
   "http://localhost:7000",
   "http://localhost:7001"
 ];
@@ -74,11 +77,14 @@ app.use(json());
 // rutas
 // 🔒 Todo lo de la app del local exige token (requireAuth).
 // 🌐 Públicas: /auth (tiene sus propias credenciales), /shop y /favoritos
-//    (las usa el shop web) y GET /producto (versión reducida, ver producto.route.js).
+//    (las usa el shop web), GET /producto (versión reducida, ver producto.route.js)
+//    y /publico (consulta de estado de equipos desde la web).
 app.use("/auth",              AuthRoute);
 app.use("/shop",              ShopRoute);
 app.use("/favoritos",         FavoritosRoute);
 app.use("/producto",          ProductoRoute);
+// Consulta pública del estado de un equipo (web jginformatica.com), con límite por IP
+app.use("/publico",           PublicoRoute);
 
 // 👤 Admin: todo. Empleado (rol tecnico): solo los módulos habilitados en usuario.modulos.
 //    requireModulo(principal, ...lectura): para escribir hace falta el módulo principal;
